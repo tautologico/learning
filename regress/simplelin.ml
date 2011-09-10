@@ -43,7 +43,7 @@ let array_op a1 a2 op =
 (* A single step of batch gradient descent *)
 let batch_gd_step alpha (th0, th1) x y =
   let m = float (Array.length x) in
-  let difs = array_op (Array.map (linear_h (th0, th1)) x) y (-.) in   (* difs = h(x) - y               *)
+  let difs = residuals (th0, th1) x y in                              (* difs = h(x) - y               *)
   let delta0 = (1. /. m) *. (array_sum difs) in                       (* delta0 = 1/m * sum difs       *)
   let delta1 = (1. /. m) *. (array_sum (array_op difs x ( *. ))) in   (* delta1 = 1/m * sum (difs * x) *)
   (th0 -. (alpha *. delta0), th1 -. (alpha *. delta1))
@@ -51,3 +51,7 @@ let batch_gd_step alpha (th0, th1) x y =
 let residuals (th0, th1) x y = 
   array_op (Array.map (linear_h (th0, th1)) x) y (-.) 
 
+let batch_gd iters alpha (th0, th1) x y = 
+  let rec loop i (th0, th1) = 
+    if i = 0 then (th0, th1) else loop (i-1) (batch_gd_step alpha (th0, th1) x y) in
+  loop iters (th0, th1)

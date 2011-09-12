@@ -18,7 +18,7 @@ yr <- 3 * x + 2
 e <- rnorm(21, 0, 1.4)
 y <- yr + e
 
-Try a small alpha for convergence, e.g. 0.007
+Try a small alpha for convergence, e.g. 0.01, with around 1000 iterations. 
 
 *)
 let x = Array.map float [| 0; 1; 2; 3; 4; 5; 6; 7; 8; 9; 10; 
@@ -40,6 +40,12 @@ let array_sum a =
 let array_op a1 a2 op = 
   Array.mapi (fun i x -> op x a2.(i)) a1 
 
+let residuals (th0, th1) x y = 
+  array_op (Array.map (linear_h (th0, th1)) x) y (-.) 
+
+let sum_abs_residuals (th0, th1) x y = 
+  array_sum (Array.map abs_float (residuals (th0, th1) x y))
+
 (* A single step of batch gradient descent *)
 let batch_gd_step alpha (th0, th1) x y =
   let m = float (Array.length x) in
@@ -48,10 +54,28 @@ let batch_gd_step alpha (th0, th1) x y =
   let delta1 = (1. /. m) *. (array_sum (array_op difs x ( *. ))) in   (* delta1 = 1/m * sum (difs * x) *)
   (th0 -. (alpha *. delta0), th1 -. (alpha *. delta1))
 
-let residuals (th0, th1) x y = 
-  array_op (Array.map (linear_h (th0, th1)) x) y (-.) 
-
+(* Batch gradient descent for linear regression with iters iterations *)
 let batch_gd iters alpha (th0, th1) x y = 
   let rec loop i (th0, th1) = 
     if i = 0 then (th0, th1) else loop (i-1) (batch_gd_step alpha (th0, th1) x y) in
   loop iters (th0, th1)
+
+(* Read a vector from a dat file *)
+let read_dat fname = 
+  let f = open_in fname in
+  let rec read_point acc = 
+    try 
+      let acc' = Scanf.fscanf f " %f " (fun x -> x :: acc) in
+      read_point acc'
+    with End_of_file -> acc in
+  Array.of_list (List.rev (read_point []))
+
+(* Solutions for Exercise 2 in Andrew Ng's Machine Learning course (OpenClassroom version) *)
+let ex2 () = 
+  let xe = read_dat "ex2x.dat" in
+  let ye = read_dat "ex2y.dat" in
+  let th01, th11 = batch_gd_step 0.07 (0.0, 0.0) xe ye in
+  let th0, th1 = batch_gd 1500 0.07 (0.0, 0.0) xe ye in
+  Printf.printf "First iteration: theta0 = %6.4f, theta1 = %6.4f\n" th01 th11; 
+  Printf.printf "Final: theta0 = %6.4f, theta1 = %6.4f\n"
+

@@ -53,7 +53,7 @@ let count_classes dset =
    TODO - this works for the whole dataset, but not when it's further 
    subdivided after the root
 *)
-let count_classes_attr dset attr_num items = 
+let count_classes_attr dset items attr_num = 
   let counts = Array.make dset.attrs.(attr_num).nvals (0, 0) in
   let count_case item = 
     let index = item.obj.(attr_num) in
@@ -73,9 +73,9 @@ let exp_information p n =
   else -. (posfrac *. log2 posfrac) -. (negfrac *. log2 negfrac)
 
 (* Evaluates the expected information gain for an attribute *)
-let attr_information dset attr_num items = 
+let attr_information dset items attr_num = 
   let p, n = count_classes dset in
-  let counts = count_classes_attr dset attr_num items in
+  let counts = count_classes_attr dset items attr_num in
   let calc_entropy pi ni = 
     let pif, nif = float pi, float ni in
     let pf, nf = float p, float n in 
@@ -92,16 +92,39 @@ let partition_by_attribute dset items attr_num =
   let partition_val i = List.filter (fun item -> item.obj.(attr_num) = i) items in
   Array.init attr.nvals partition_val
 
+let remove_attr attr_set attr = 
+  List.fold_right (fun a lst -> if a = attr then lst else a :: lst) attr_set []
   
-(* 
-   Must keep the current set of objects being considered for decision tree 
-   subdivisions
-*)
-  
+
+let all_items_pos_neg items = 
+  let rec loop items res = 
+    match items with 
+        [] -> Some res
+      | i :: rest -> if i.cls = res then loop rest res else None in
+  match items with 
+      [] -> None
+    | i :: rest -> loop rest i.cls
+
+(* Does not deal with missing values or inadequate attribute values *)
 let id3 dset = 
   let pos, neg = count_classes dset in
+  let info = exp_information pos neg in
   let attr_set = gen_attr_set dset.nattrs in
-  Leaf Pos
+  let compare_attr dset items attr (best, maxgain) = 
+    let gain = info -. (attr_information dset items attr) in 
+    if gain > maxgain then (attr, gain) else (best, maxgain) in
+  let select_attr attr_set items = 
+    fst (List.fold_right (compare_attr dset items) attr_set (0, 0.0)) in
+  let rec partition dset attr_set items = 
+    match all_items_pos_neg items with
+        Some Pos -> Leaf Pos 
+      | Some Neg -> Leaf Neg
+      | None -> 
+        let root_attr = select_attr attr_set items in
+        let subtrees = Array.to_list (partition_by_attribute dset items root_attr) in
+        let new_attr_set = remove_attr attr_set root_attr in
+        Internal (dset.attrs.(root_attr), List.map (partition dset attr_set) subtrees) in
+  partition dset attr_set dset.items
 
 
 (* a test dataset *)
@@ -148,3 +171,6 @@ let weather_data =
         { obj = [| 2; 1; 1; 1 |]; cls = Neg; }
       ];      
   }
+
+(* Testing with the example from Quinlan's paper "Induction of Decision Trees" *)
+let test = id3 weather_data

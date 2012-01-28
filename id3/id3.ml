@@ -13,6 +13,11 @@
 
    - Deal with an empty set of items for a certain attribute value, or 
    an empty set of attributes to partition the tree. 
+
+   - Representation issues with the data: attributes are integers, data 
+   inside the system is not human-readable; int is also "too wide" for 
+   most attributes, and illegal states can be represented, which means 
+   checking is necessary. 
 *)
 
 

@@ -7,6 +7,16 @@
  * 
  *)
 
+
+(* 
+   TODO
+
+   - Deal with an empty set of items for a certain attribute value, or 
+   an empty set of attributes to partition the tree. 
+*)
+
+
+
 (* 
    - Test data is composed of objects. 
    - Each object is characterized by a set of attributes
@@ -41,18 +51,17 @@ type dtree = Internal of attribute * dtree list | Leaf of obj_class
 let log2 n = (log10 n) /. (log10 2.0)
 
 
+(* Generate the initial attribute set (range 0..(n-1)) *)
 let gen_attr_set n = 
   let rec loop i = if i = n then [] else i :: loop (i+1) in 
   loop 0
 
+(* Count class membership numbers for the whole dataset *)
 let count_classes dset = 
   let count_case item (p, n) = match item.cls with Pos -> (p+1, n) | Neg -> (p, n+1) in
   List.fold_right count_case dset.items (0,0)
 
-(* 
-   TODO - this works for the whole dataset, but not when it's further 
-   subdivided after the root
-*)
+(* Count class membership for all attribute values of attr_num *)
 let count_classes_attr dset items attr_num = 
   let counts = Array.make dset.attrs.(attr_num).nvals (0, 0) in
   let count_case item = 
@@ -92,10 +101,11 @@ let partition_by_attribute dset items attr_num =
   let partition_val i = List.filter (fun item -> item.obj.(attr_num) = i) items in
   Array.init attr.nvals partition_val
 
+(* Remove item from list *)
 let remove_attr attr_set attr = 
   List.fold_right (fun a lst -> if a = attr then lst else a :: lst) attr_set []
   
-
+(* Check to see if all items are positive, negative or neither *)
 let all_items_pos_neg items = 
   let rec loop items res = 
     match items with 
@@ -105,7 +115,7 @@ let all_items_pos_neg items =
       [] -> None
     | i :: rest -> loop rest i.cls
 
-(* Does not deal with missing values or inadequate attribute values *)
+(* Induce a Decision Tree using the ID3 algorithm *)
 let id3 dset = 
   let pos, neg = count_classes dset in
   let info = exp_information pos neg in

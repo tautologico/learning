@@ -14,7 +14,7 @@
 #include <math.h>
 
 // macro to access weight ij in layer l
-#define W(l, i, j)       ( l->w[i * l->prev->n_neurons + j] )
+#define W(l, i, j)       ( l->w[i * (l->prev->n_neurons+1) + j] )
 
 // structure representing a layer in the neural net
 typedef struct tagLayer
@@ -35,9 +35,6 @@ typedef struct tagNetwork
 } Network;
 
 
-// the input layer to the network
-Layer *input_layer;
-
 
 // sigmoid activation function
 double sigmoid(double t)
@@ -47,16 +44,16 @@ double sigmoid(double t)
 
 
 // initialize structures, given the number of inputs to the network
-void init(int n_inputs)
-{
-    // initialize input layer
-    input_layer = malloc(sizeof(Layer));
-    input_layer->n_neurons = n_inputs;
-    input_layer->w = NULL;
-    input_layer->prev = NULL;
-    input_layer->next = NULL;
-    input_layer->y = (double*) malloc(sizeof(double) * n_inputs);
-}
+/* void init(int n_inputs) */
+/* { */
+/*     // initialize input layer */
+/*     input_layer = malloc(sizeof(Layer)); */
+/*     input_layer->n_neurons = n_inputs; */
+/*     input_layer->w = NULL; */
+/*     input_layer->prev = NULL; */
+/*     input_layer->next = NULL; */
+/*     input_layer->y = (double*) malloc(sizeof(double) * n_inputs); */
+/* } */
 
 Layer *create_layer(Layer *prev, int n_neurons)
 {
@@ -67,10 +64,10 @@ Layer *create_layer(Layer *prev, int n_neurons)
     res->n_neurons = n_neurons;
     res->prev = prev;
     res->y = (double*) malloc(sizeof(double) * n_neurons);
-    res->w = (double*) malloc(sizeof(double) * n_neurons * prev->n_neurons);
-    res->next = NULL;
 
-    // TODO: assign weight to bias neuron? (neuron 0)
+    // allocate weights (including one for bias for each neuron)
+    res->w = (double*) malloc(sizeof(double) * n_neurons * (prev->n_neurons+1));
+    res->next = NULL;
 
     return res;
 }
@@ -106,11 +103,13 @@ Network *create_network(int n_inputs)
     return res;
 }
 
-void add_layer(Network *nnet, int n_neurons)
+Layer* add_layer(Network *nnet, int n_neurons)
 {
     Layer *new_layer = create_layer(nnet->output_layer, n_neurons);
     nnet->output_layer = new_layer;
     nnet->n_layers++;
+
+    return new_layer;
 }
 
 void destroy_network(Network *nnet)
@@ -118,12 +117,11 @@ void destroy_network(Network *nnet)
     Layer *l1, *l2;
 
     l1 = nnet->input_layer;
-    l2 = l1->next;
 
     while (l1 != NULL) {
+        l2 = l1->next;
         destroy_layer(l1);
         l1 = l2;
-        l2 = l2->next;
     }
 
     free(nnet);
@@ -133,22 +131,24 @@ void basic_test(void)
 {
     int   i;
     Layer *l1, *l2;
+    Network *nnet = create_network(3);
 
     // test
-    init(3);
-    l1 = create_layer(input_layer, 2);
-    l2 = create_layer(l1, 3);
+    l1 = add_layer(nnet, 2);
+    l2 = add_layer(nnet, 3);
 
     W(l1, 0, 0) = 1.0;
     W(l1, 0, 1) = 2.0;
     W(l1, 0, 2) = 3.0;
+    W(l1, 0, 3) = 3.5;
     W(l1, 1, 0) = 4.0;
     W(l1, 1, 1) = 5.0;
     W(l1, 1, 2) = 6.0;
+    W(l1, 1, 3) = 6.5;
 
     printf("### Basic layer test\n");
     printf("Weights for layer 1:\n");
-    for (i = 0; i < 6; ++i)
+    for (i = 0; i < 8; ++i)
         printf("%5.2f ", l1->w[i]);
 
     printf("\n\n");
@@ -161,14 +161,12 @@ void basic_test(void)
     W(l2, 2, 1) = 6.0;
 
     printf("Weights for layer 2:\n");
-    for (i = 0; i < 6; ++i)
+    for (i = 0; i < 9; ++i)
         printf("%5.2f ", l2->w[i]);
 
     printf("\n");
 
-    destroy_layer(l1);
-    destroy_layer(l2);
-    free(input_layer);
+    destroy_network(nnet);
 }
 
 // propagates the inputs forward, calculating the network outputs
@@ -181,10 +179,13 @@ void forward_prop(Network *nnet, double (*activf)(double))
     double a;
 
     while (current_layer != NULL) {
-        a = 0.0;
         for (i = 0; i < current_layer->n_neurons; ++i) {
-            for (j = 0; j < prev_layer->n_neurons; ++j)
-                a += W(current_layer, i, j);
+            // compute the bias
+            a = W(current_layer, i, 0) * 1.0;
+            // add weights * inputs
+            for (j = 1; j < (prev_layer->n_neurons+1); ++j)
+                a += W(current_layer, i, j) * prev_layer->y[j-1];
+            // apply activation function
             current_layer->y[i] = activf(a);
         }
         prev_layer = current_layer;
@@ -230,7 +231,7 @@ void xor_test(void)
 int main(int argc, char **argv)
 {
     basic_test();
-    xor_test();
+    //xor_test();
 
     return 0;
 }

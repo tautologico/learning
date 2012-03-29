@@ -53,17 +53,6 @@ double threshold(double t)
     return (t > 0? 1.0 : 0.0);
 }
 
-// initialize structures, given the number of inputs to the network
-/* void init(int n_inputs) */
-/* { */
-/*     // initialize input layer */
-/*     input_layer = malloc(sizeof(Layer)); */
-/*     input_layer->n_neurons = n_inputs; */
-/*     input_layer->w = NULL; */
-/*     input_layer->prev = NULL; */
-/*     input_layer->next = NULL; */
-/*     input_layer->y = (double*) malloc(sizeof(double) * n_inputs); */
-/* } */
 
 Layer *create_layer(Layer *prev, int n_neurons)
 {

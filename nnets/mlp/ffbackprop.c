@@ -7,7 +7,6 @@
  *
  */
 
-// TODO: add bias neurons in addition to the ones created in layers?
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +14,13 @@
 
 // macro to access weight ij in layer l
 #define W(l, i, j)       ( l->w[i * (l->prev->n_neurons+1) + j] )
+
+// constant to use as a seed (for reproducibility)
+#define SEED             1439021
+
+// maximum absolute value of initial weight
+#define MAX_ABS_WEIGHT   1.6
+
 
 // structure representing a layer in the neural net
 typedef struct tagLayer
@@ -42,6 +48,10 @@ double sigmoid(double t)
     return 1.0 / (1.0 + exp(-t));
 }
 
+double threshold(double t)
+{
+    return (t > 0? 1.0 : 0.0);
+}
 
 // initialize structures, given the number of inputs to the network
 /* void init(int n_inputs) */
@@ -127,6 +137,25 @@ void destroy_network(Network *nnet)
     free(nnet);
 }
 
+void initialize_weights(Network *nnet, unsigned int seed)
+{
+    int r;
+    int i, j;
+    Layer *l = nnet->input_layer->next;
+
+    srand(seed);
+
+    while (l != NULL) {
+        for (i = 0; i < l->n_neurons; ++i)
+            for (j = 0; j < l->prev->n_neurons+1; ++j) {
+                r = rand();
+                W(l, i, j) = (r - (RAND_MAX / 2.0)) *
+                             (2.0 * MAX_ABS_WEIGHT / RAND_MAX);
+            }
+        l = l->next;
+    }
+}
+
 void basic_test(void)
 {
     int   i;
@@ -201,37 +230,99 @@ void xor_test(void)
     Layer   *l1, *l2;    // layers for manually adjusting weights
 
     // middle layer
-    add_layer(xor_nn, 2);
+    l1 = add_layer(xor_nn, 2);
 
     // output layer
-    add_layer(xor_nn, 1);
-
-    l1 = xor_nn->input_layer->next;
-    l2 = l1->next;
+    l2 = add_layer(xor_nn, 1);
 
     // set weights for layer 1
-    W(l1, 0, 0) = 0.0;
-    W(l1, 0, 1) = 0.0;
-    W(l1, 1, 0) = 0.0;
-    W(l1, 1, 1) = 0.0;
+    W(l1, 0, 0) = 0.5;
+    W(l1, 0, 1) = -1.0;
+    W(l1, 0, 2) = -1.0;
+
+    W(l1, 1, 0) = -1.5;
+    W(l1, 1, 1) = 1.0;
+    W(l1, 1, 2) = 1.0;
 
     // set weights for layer 2
-    W(l2, 0, 0) = 0.0;
-    W(l2, 0, 1) = 0.0;
+    W(l2, 0, 0) = 0.5;
+    W(l2, 0, 1) = -1.0;
+    W(l2, 0, 2) = -1.0;
 
     printf("\n### XOR network (forward propagation test)\n");
 
-    // set input values
+    // test case (0, 0)
     xor_nn->input_layer->y[0] = 0.0;
     xor_nn->input_layer->y[1] = 0.0;
 
-    forward_prop(xor_nn, sigmoid);
+    forward_prop(xor_nn, threshold);
+
+    printf("Output for (0, 0) = %2.1f\n", xor_nn->output_layer->y[0]);
+
+    // test case (0, 1)
+    xor_nn->input_layer->y[0] = 0.0;
+    xor_nn->input_layer->y[1] = 1.0;
+
+    forward_prop(xor_nn, threshold);
+
+    printf("Output for (0, 1) = %2.1f\n", xor_nn->output_layer->y[0]);
+
+    // test case (1, 0)
+    xor_nn->input_layer->y[0] = 1.0;
+    xor_nn->input_layer->y[1] = 0.0;
+
+    forward_prop(xor_nn, threshold);
+
+    printf("Output for (1, 0) = %2.1f\n", xor_nn->output_layer->y[0]);
+
+    // test case (1, 1)
+    xor_nn->input_layer->y[0] = 1.0;
+    xor_nn->input_layer->y[1] = 1.0;
+
+    forward_prop(xor_nn, threshold);
+
+    printf("Output for (1, 1) = %2.1f\n\n", xor_nn->output_layer->y[0]);
+}
+
+void random_init_test(void)
+{
+    int   i;
+    Layer *l1, *l2;
+    Network *nnet = create_network(3);
+
+    // test
+    l1 = add_layer(nnet, 2);
+    l2 = add_layer(nnet, 3);
+
+    initialize_weights(nnet, SEED);
+
+    printf("### Random initialization test\n");
+    printf("Weights for layer 1:\n");
+    for (i = 0; i < 8; ++i)
+        printf("%5.2f ", l1->w[i]);
+
+    printf("\n\n");
+
+    printf("Weights for layer 2:\n");
+    for (i = 0; i < 9; ++i)
+        printf("%5.2f ", l2->w[i]);
+
+    printf("\n\n");
+
+    destroy_network(nnet);
+}
+
+// train network nnet in batch mode,
+// using the provided inputs and outputs
+void batch_train(Network *nnet, double *inputs, double *outputs)
+{
 }
 
 int main(int argc, char **argv)
 {
     basic_test();
-    //xor_test();
+    xor_test();
+    random_init_test();
 
     return 0;
 }

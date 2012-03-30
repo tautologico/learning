@@ -368,7 +368,7 @@ double **create_delta_matrix(Network *nnet)
 void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
                  double (*actf)(double), double (*dactf)(double))
 {
-    int    i, j, k;
+    int    i, j, k, ii;
     int    lnum;
     double **deriv;   // per-weight derivatives
     double **delta;   // per-node delta for derivative calculation
@@ -406,12 +406,18 @@ void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
 
             // calculate deltas for hidden layers
             for (lnum--, l=l->prev; lnum >=0; lnum--, l=l->prev) {
-                // TODO: calculate deltas for hidden layers
                 for (k = 0; k < l->n_neurons; ++k) {
+                    delta[lnum][k] = 0.0;
+                    for (ii = 0; ii < l->next->n_neurons; ++ii)
+                        delta[lnum][k] += W(l->next, ii, k) * delta[lnum+1][ii];
+                    delta[lnum][k] *= dactf(l->a[k]);  // FIX: what
+                                                       // about the
+                                                       // bias weights?
                 }
             }
 
             // TODO: calculate error derivatives from deltas
+            // TODO: update weights based on derivatives
         }
     }
 

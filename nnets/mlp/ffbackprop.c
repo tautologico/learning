@@ -29,7 +29,8 @@ typedef struct tagLayer
     double *w;                          // input weights for the layer
     struct tagLayer *prev;              // previous layer
     struct tagLayer *next;              // next layer
-    double *y;                          // activations
+    double *a;                          // activations
+    double *y;                          // node outputs
 } Layer;
 
 // structure representing a neural network
@@ -71,6 +72,7 @@ Layer *create_layer(Layer *prev, int n_neurons)
 
     res->n_neurons = n_neurons;
     res->prev = prev;
+    res->a = (double*) malloc(sizeof(double) * n_neurons);
     res->y = (double*) malloc(sizeof(double) * n_neurons);
 
     // allocate weights (including one for bias for each neuron)
@@ -85,6 +87,9 @@ void destroy_layer(Layer *layer)
     if (layer != NULL) {
         if (layer->w != NULL)
             free(layer->w);
+
+        if (layer->a != NULL)
+            free(layer->a);
 
         if (layer->y != NULL)
             free(layer->y);
@@ -104,6 +109,7 @@ Network *create_network(int n_inputs)
     res->input_layer->w = NULL;
     res->input_layer->prev = NULL;
     res->input_layer->next = NULL;
+    res->input_layer->a = NULL;
     res->input_layer->y = (double*) malloc(sizeof(double) * n_inputs);
 
     res->output_layer = res->input_layer;
@@ -203,25 +209,24 @@ void forward_prop(Network *nnet, double (*activf)(double), double *input)
 {
     int   i, j;
     Layer *prev_layer = nnet->input_layer;
-    Layer *current_layer = prev_layer->next;
-    double a;
+    Layer *layer = prev_layer->next;
 
     // copy inputs to the input layer neurons
     for (i = 0; i < nnet->input_layer->n_neurons; ++i)
         nnet->input_layer->y[i] = input[i];
 
-    while (current_layer != NULL) {
-        for (i = 0; i < current_layer->n_neurons; ++i) {
+    while (layer != NULL) {
+        for (i = 0; i < layer->n_neurons; ++i) {
             // compute the bias
-            a = W(current_layer, i, 0) * 1.0;
+            layer->a[i] = W(layer, i, 0) * 1.0;
             // add weights * inputs
             for (j = 1; j < (prev_layer->n_neurons+1); ++j)
-                a += W(current_layer, i, j) * prev_layer->y[j-1];
+                layer->a[i] += W(layer, i, j) * prev_layer->y[j-1];
             // apply activation function
-            current_layer->y[i] = activf(a);
+            layer->y[i] = activf(layer->a[i]);
         }
-        prev_layer = current_layer;
-        current_layer = prev_layer->next;
+        prev_layer = layer;
+        layer = prev_layer->next;
     }
 }
 
@@ -357,15 +362,18 @@ double **create_delta_matrix(Network *nnet)
 }
 
 // train network nnet in batch mode,
-// using the provided dataset, for one epoch,
-// using lrate as the learning rate and activf as
-// activation function
-void batch_train_epoch(Network *nnet, DataSet *dset, double lrate,
-                       double (*activf)(double))
+// using the provided dataset, for a number of epochs,
+// using lrate as the learning rate and actf as
+// activation function (dactf is its derivative)
+void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
+                 double (*actf)(double), double (*dactf)(double))
 {
-    int    i, j;
+    int    i, j, k;
+    int    lnum;
     double **deriv;   // per-weight derivatives
     double **delta;   // per-node delta for derivative calculation
+    double d;
+    Layer *l;
 
     // check to see if the dataset matches the network
     if (dset->input_size != nnet->input_layer->n_neurons) {
@@ -383,11 +391,28 @@ void batch_train_epoch(Network *nnet, DataSet *dset, double lrate,
     deriv = create_weight_derivatives_matrix(nnet);
     delta = create_delta_matrix(nnet);
 
-    for (i = 0; i < dset->n_cases; ++i) {
-        // propagate forward and calculate network outputs
-        forward_prop(nnet, activf, dset->input[i]);
+    for (j = 0; j < epochs; ++j) {
+        for (i = 0; i < dset->n_cases; ++i) {
+            // propagate forward and calculate network outputs
+            forward_prop(nnet, actf, dset->input[i]);
 
-        // TODO: calculate deltas, derivatives etc
+            // calculate deltas for output layer
+            l = nnet->output_layer;
+            lnum = nnet->n_layers-2;
+            for (k = 0; k < l->n_neurons; ++k) {
+                d = dset->output[i][k] - l->y[k];
+                delta[lnum][k] = -d * dactf(l->a[k]);
+            }
+
+            // calculate deltas for hidden layers
+            for (lnum--, l=l->prev; lnum >=0; lnum--, l=l->prev) {
+                // TODO: calculate deltas for hidden layers
+                for (k = 0; k < l->n_neurons; ++k) {
+                }
+            }
+
+            // TODO: calculate error derivatives from deltas
+        }
     }
 
 }

@@ -40,6 +40,15 @@ typedef struct tagNetwork
     Layer *output_layer;  // the output (last) layer
 } Network;
 
+// structure for a dataset
+typedef struct tagDataSet
+{
+    int    n_cases;       // number of cases
+    int    input_size;    // size of input in each case
+    int    output_size;   // size of output in each case
+    double **input;       // inputs
+    double **output;      // outputs
+} DataSet;
 
 
 // sigmoid activation function
@@ -187,14 +196,19 @@ void basic_test(void)
     destroy_network(nnet);
 }
 
-// propagates the inputs forward, calculating the network outputs
+// propagates the input forward, calculating the network outputs
 // activf is the activation function to use on the outputs
-void forward_prop(Network *nnet, double (*activf)(double))
+// (assumes input is the same size as the number of neurons in input layer)
+void forward_prop(Network *nnet, double (*activf)(double), double *input)
 {
     int   i, j;
     Layer *prev_layer = nnet->input_layer;
     Layer *current_layer = prev_layer->next;
     double a;
+
+    // copy inputs to the input layer neurons
+    for (i = 0; i < nnet->input_layer->n_neurons; ++i)
+        nnet->input_layer->y[i] = input[i];
 
     while (current_layer != NULL) {
         for (i = 0; i < current_layer->n_neurons; ++i) {
@@ -213,10 +227,9 @@ void forward_prop(Network *nnet, double (*activf)(double))
 
 void xor_test(void)
 {
-    // TODO: implement MLP network with XOR function, test forward
-    // propagation
     Network *xor_nn = create_network(2);  // 2 inputs
     Layer   *l1, *l2;    // layers for manually adjusting weights
+    double  inputs[2];
 
     // middle layer
     l1 = add_layer(xor_nn, 2);
@@ -241,34 +254,34 @@ void xor_test(void)
     printf("\n### XOR network (forward propagation test)\n");
 
     // test case (0, 0)
-    xor_nn->input_layer->y[0] = 0.0;
-    xor_nn->input_layer->y[1] = 0.0;
+    inputs[0] = 0.0;
+    inputs[1] = 0.0;
 
-    forward_prop(xor_nn, threshold);
+    forward_prop(xor_nn, threshold, inputs);
 
     printf("Output for (0, 0) = %2.1f\n", xor_nn->output_layer->y[0]);
 
     // test case (0, 1)
-    xor_nn->input_layer->y[0] = 0.0;
-    xor_nn->input_layer->y[1] = 1.0;
+    inputs[0] = 0.0;
+    inputs[1] = 1.0;
 
-    forward_prop(xor_nn, threshold);
+    forward_prop(xor_nn, threshold, inputs);
 
     printf("Output for (0, 1) = %2.1f\n", xor_nn->output_layer->y[0]);
 
     // test case (1, 0)
-    xor_nn->input_layer->y[0] = 1.0;
-    xor_nn->input_layer->y[1] = 0.0;
+    inputs[0] = 1.0;
+    inputs[1] = 0.0;
 
-    forward_prop(xor_nn, threshold);
+    forward_prop(xor_nn, threshold, inputs);
 
     printf("Output for (1, 0) = %2.1f\n", xor_nn->output_layer->y[0]);
 
     // test case (1, 1)
-    xor_nn->input_layer->y[0] = 1.0;
-    xor_nn->input_layer->y[1] = 1.0;
+    inputs[0] = 1.0;
+    inputs[1] = 1.0;
 
-    forward_prop(xor_nn, threshold);
+    forward_prop(xor_nn, threshold, inputs);
 
     printf("Output for (1, 1) = %2.1f\n\n", xor_nn->output_layer->y[0]);
 }
@@ -301,10 +314,82 @@ void random_init_test(void)
     destroy_network(nnet);
 }
 
-// train network nnet in batch mode,
-// using the provided inputs and outputs
-void batch_train(Network *nnet, double *inputs, double *outputs)
+double **create_weight_derivatives_matrix(Network *nnet)
 {
+    int    i;
+    int    n_weights;  // number of weights per layer
+    double **deriv;
+    Layer  *l = nnet->input_layer->next;
+
+    deriv = (double**) malloc(sizeof(double*) * (nnet->n_layers-1));
+    if (deriv == NULL)
+        return NULL;
+
+    for (i = 0; i < nnet->n_layers-1; ++i, l = l->next) {
+        n_weights = l->n_neurons * (l->prev->n_neurons+1);
+        deriv[i] = (double*) malloc(sizeof(double) * n_weights);
+        if (deriv[i] == NULL)
+            return NULL;
+    }
+
+    return deriv;
+}
+
+// create a matrix for deltas
+// (could reduce space to keep deltas for only 2 layers at a time)
+double **create_delta_matrix(Network *nnet)
+{
+    int    i;
+    double **deltas;
+    Layer  *l = nnet->input_layer->next;
+
+    deltas = (double**) malloc(sizeof(double*) * (nnet->n_layers-1));
+    if (deltas == NULL)
+        return NULL;
+
+    for (i = 0; i < nnet->n_layers-1; ++i, l = l->next) {
+        deltas[i] = (double*) malloc(sizeof(double) * l->n_neurons);
+        if (deltas[i] == NULL)
+            return NULL;
+    }
+
+    return deltas;
+}
+
+// train network nnet in batch mode,
+// using the provided dataset, for one epoch,
+// using lrate as the learning rate and activf as
+// activation function
+void batch_train_epoch(Network *nnet, DataSet *dset, double lrate,
+                       double (*activf)(double))
+{
+    int    i, j;
+    double **deriv;   // per-weight derivatives
+    double **delta;   // per-node delta for derivative calculation
+
+    // check to see if the dataset matches the network
+    if (dset->input_size != nnet->input_layer->n_neurons) {
+        fprintf(stderr, "batch_train: Size of input in dataset is different \
+                         from input layer in neural net\n");
+        return;
+    }
+
+    if (dset->output_size != nnet->output_layer->n_neurons) {
+        fprintf(stderr, "batch_train: Size of output in dataset is different \
+                         from output layer in neural net\n");
+        return;
+    }
+
+    deriv = create_weight_derivatives_matrix(nnet);
+    delta = create_delta_matrix(nnet);
+
+    for (i = 0; i < dset->n_cases; ++i) {
+        // propagate forward and calculate network outputs
+        forward_prop(nnet, activf, dset->input[i]);
+
+        // TODO: calculate deltas, derivatives etc
+    }
+
 }
 
 int main(int argc, char **argv)

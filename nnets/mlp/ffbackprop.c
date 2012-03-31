@@ -366,7 +366,7 @@ void calculate_deltas(Network *nnet, double **delta, double *d_output,
                       double (*dactf)(double))
 {
     int    i, j;
-    int    ln;
+    int    ln;     // layer number
     double d;
     Layer  *l = nnet->output_layer;
 
@@ -404,9 +404,9 @@ void calculate_derivatives(Network *nnet, double **delta, double **deriv)
         for (nn = 0; nn < l->n_neurons; ++nn) {
             // dE_p/dw_{n0}^l = delta_n^l (bias weight)
             deriv[ln][nn*ws] += delta[ln][nn];
-            for (wn = 0; wn < ws; ++wn)
+            for (wn = 1; wn < ws; ++wn)
                 // dE_p/dw_{nw}^l = delta_n^l * y_w^{l-1}
-                deriv[ln][nn*ws+wn+1] += delta[ln][nn] * l->prev->y[wn];
+                deriv[ln][nn*ws+wn] += delta[ln][nn] * l->prev->y[wn-1];
         }
     }
 }
@@ -419,8 +419,11 @@ void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
                  double (*actf)(double), double (*dactf)(double))
 {
     int    i, j;
+    int    ln;
+    int    wn, ws;
     double **deriv;   // per-weight derivatives
     double **delta;   // per-node delta for derivative calculation
+    Layer  *l;
 
     // check to see if the dataset matches the network
     if (dset->input_size != nnet->input_layer->n_neurons) {
@@ -440,6 +443,13 @@ void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
     // TODO: verify if allocations failed
 
     for (j = 0; j < epochs; ++j) {
+        // clear the deriv matrix
+        l = nnet->input_layer->next;
+        for (ln = 0; ln < nnet->n_layers-1; ++ln, l=l->next) {
+            for (i = 0; i < l->n_neurons * (l->prev->n_neurons+1); ++i)
+                deriv[ln][i] = 0.0;
+        }
+
         for (i = 0; i < dset->n_cases; ++i) {
             // propagate forward and calculate network outputs
             forward_prop(nnet, actf, dset->input[i]);
@@ -450,8 +460,16 @@ void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
             // calculate error derivatives for the current input
             calculate_derivatives(nnet, delta, deriv);
         }
-        // TODO: now derivatives for this epoch have been calculated
-        // TODO: update weights based on derivatives
+
+        // now derivatives for this epoch have been calculated
+        // update weights based on derivatives
+        l = nnet->input_layer->next;
+        for (ln = 0; ln < nnet->n_layers-1; ++ln, l=l->next) {
+            ws = l->prev->n_neurons + 1;
+            for (i = 0; i < l->n_neurons; ++i)
+                for (wn = 0; wn < ws; ++wn)
+                    W(l, i, wn) += lrate * deriv[ln][i*ws+wn];
+        }
     }
 
 }

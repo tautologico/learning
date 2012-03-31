@@ -361,6 +361,34 @@ double **create_delta_matrix(Network *nnet)
     return deltas;
 }
 
+// calculate deltas for the nodes given the desired outputs
+void calculate_deltas(Network *nnet, double **delta, double *d_output,
+                      double (*dactf)(double))
+{
+    int    i, j;
+    int    ln;
+    double d;
+    Layer  *l = nnet->output_layer;
+
+    // calculate deltas for output layer
+    ln = nnet->n_layers-2;
+    for (i = 0; i < l->n_neurons; ++i) {
+        d = d_output[i] - l->y[i];
+        delta[ln][i] = -d * dactf(l->a[i]);
+    }
+
+    // calculate deltas for hidden layers
+    for (ln--, l=l->prev; ln >=0; ln--, l=l->prev) {
+        for (i = 0; i < l->n_neurons; ++i) {
+            delta[ln][i] = 0.0;
+            for (j = 0; j < l->next->n_neurons; ++j)
+                // use i+1-th weight to compensate for bias node
+                delta[ln][i] += W(l->next, j, i+1) * delta[ln+1][j];
+            delta[ln][i] *= dactf(l->a[i]);
+        }
+    }
+}
+
 // given deltas for the nodes,
 // calculate the derivatives in relation to the weights
 void calculate_derivatives(Network *nnet, double **delta, double **deriv)
@@ -374,7 +402,7 @@ void calculate_derivatives(Network *nnet, double **delta, double **deriv)
     for (ln = 0; ln < nnet->n_layers-1; ++ln, l=l->next) {
         ws = l->prev->n_neurons + 1;
         for (nn = 0; nn < l->n_neurons; ++nn) {
-            // dE_p/dw_{n0}^l = delta_n^l
+            // dE_p/dw_{n0}^l = delta_n^l (bias weight)
             deriv[ln][nn*ws] += delta[ln][nn];
             for (wn = 0; wn < ws; ++wn)
                 // dE_p/dw_{nw}^l = delta_n^l * y_w^{l-1}
@@ -390,12 +418,9 @@ void calculate_derivatives(Network *nnet, double **delta, double **deriv)
 void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
                  double (*actf)(double), double (*dactf)(double))
 {
-    int    i, j, k, ii;
-    int    lnum;
+    int    i, j;
     double **deriv;   // per-weight derivatives
     double **delta;   // per-node delta for derivative calculation
-    double d;
-    Layer *l;
 
     // check to see if the dataset matches the network
     if (dset->input_size != nnet->input_layer->n_neurons) {
@@ -412,30 +437,15 @@ void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
 
     deriv = create_weight_derivatives_matrix(nnet);
     delta = create_delta_matrix(nnet);
+    // TODO: verify if allocations failed
 
     for (j = 0; j < epochs; ++j) {
         for (i = 0; i < dset->n_cases; ++i) {
             // propagate forward and calculate network outputs
             forward_prop(nnet, actf, dset->input[i]);
 
-            // calculate deltas for output layer
-            l = nnet->output_layer;
-            lnum = nnet->n_layers-2;
-            for (k = 0; k < l->n_neurons; ++k) {
-                d = dset->output[i][k] - l->y[k];
-                delta[lnum][k] = -d * dactf(l->a[k]);
-            }
-
-            // calculate deltas for hidden layers
-            for (lnum--, l=l->prev; lnum >=0; lnum--, l=l->prev) {
-                for (k = 0; k < l->n_neurons; ++k) {
-                    delta[lnum][k] = 0.0;
-                    for (ii = 0; ii < l->next->n_neurons; ++ii)
-                        // use k+1-th weight to compensate for bias node
-                        delta[lnum][k] += W(l->next, ii, k+1) * delta[lnum+1][ii];
-                    delta[lnum][k] *= dactf(l->a[k]);
-                }
-            }
+            // calculate deltas for nodes
+            calculate_deltas(nnet, delta, dset->output[i], dactf);
 
             // calculate error derivatives for the current input
             calculate_derivatives(nnet, delta, deriv);

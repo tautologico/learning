@@ -332,7 +332,7 @@ double **create_weight_derivatives_matrix(Network *nnet)
 
     for (i = 0; i < nnet->n_layers-1; ++i, l = l->next) {
         n_weights = l->n_neurons * (l->prev->n_neurons+1);
-        deriv[i] = (double*) malloc(sizeof(double) * n_weights);
+        deriv[i] = (double*) calloc(n_weights, sizeof(double));
         if (deriv[i] == NULL)
             return NULL;
     }
@@ -361,7 +361,29 @@ double **create_delta_matrix(Network *nnet)
     return deltas;
 }
 
-// train network nnet in batch mode,
+// given deltas for the nodes,
+// calculate the derivatives in relation to the weights
+void calculate_derivatives(Network *nnet, double **delta, double **deriv)
+{
+    int   ln;   // layer number
+    int   nn;   // neuron (node) number
+    int   wn;   // weight number
+    int   ws;   // number of weights per node in layer
+    Layer *l = nnet->input_layer->next;
+
+    for (ln = 0; ln < nnet->n_layers-1; ++ln, l=l->next) {
+        ws = l->prev->n_neurons + 1;
+        for (nn = 0; nn < l->n_neurons; ++nn) {
+            // dE_p/dw_{n0}^l = delta_n^l
+            deriv[ln][nn*ws] += delta[ln][nn];
+            for (wn = 0; wn < ws; ++wn)
+                // dE_p/dw_{nw}^l = delta_n^l * y_w^{l-1}
+                deriv[ln][nn*ws+wn+1] += delta[ln][nn] * l->prev->y[wn];
+        }
+    }
+}
+
+// train network nnet in batch mode with backpropagation,
 // using the provided dataset, for a number of epochs,
 // using lrate as the learning rate and actf as
 // activation function (dactf is its derivative)
@@ -409,16 +431,17 @@ void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
                 for (k = 0; k < l->n_neurons; ++k) {
                     delta[lnum][k] = 0.0;
                     for (ii = 0; ii < l->next->n_neurons; ++ii)
-                        delta[lnum][k] += W(l->next, ii, k) * delta[lnum+1][ii];
-                    delta[lnum][k] *= dactf(l->a[k]);  // FIX: what
-                                                       // about the
-                                                       // bias weights?
+                        // use k+1-th weight to compensate for bias node
+                        delta[lnum][k] += W(l->next, ii, k+1) * delta[lnum+1][ii];
+                    delta[lnum][k] *= dactf(l->a[k]);
                 }
             }
 
-            // TODO: calculate error derivatives from deltas
-            // TODO: update weights based on derivatives
+            // calculate error derivatives for the current input
+            calculate_derivatives(nnet, delta, deriv);
         }
+        // TODO: now derivatives for this epoch have been calculated
+        // TODO: update weights based on derivatives
     }
 
 }

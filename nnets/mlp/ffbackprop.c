@@ -58,6 +58,11 @@ double sigmoid(double t)
     return 1.0 / (1.0 + exp(-t));
 }
 
+double dsigmoid(double t)
+{
+    return sigmoid(t) * (1.0 - sigmoid(t));
+}
+
 double threshold(double t)
 {
     return (t > 0? 1.0 : 0.0);
@@ -139,6 +144,29 @@ void destroy_network(Network *nnet)
     }
 
     free(nnet);
+}
+
+void print_network_structure(Network *nnet)
+{
+    int   i, j;
+    Layer *l = nnet->input_layer->next;
+
+    printf("--- Neural network structure ---\n");
+    printf("Layers: %d\n", nnet->n_layers);
+    printf("Inputs: %d\n", nnet->input_layer->n_neurons);
+    printf("Outputs: %d\n", nnet->output_layer->n_neurons);
+
+    i = 0;
+    while (l != NULL) {
+        printf("Weights[%d]: ", i);
+        for (j = 0; j < l->n_neurons * (l->prev->n_neurons+1); ++j)
+            printf("%2.1f ", l->w[j]);
+        printf("\n");
+        l = l->next;
+        ++i;
+    }
+
+    printf("--------------------------------\n");
 }
 
 void initialize_weights(Network *nnet, unsigned int seed)
@@ -362,18 +390,20 @@ double **create_delta_matrix(Network *nnet)
 }
 
 // calculate deltas for the nodes given the desired outputs
-void calculate_deltas(Network *nnet, double **delta, double *d_output,
-                      double (*dactf)(double))
+// return the sum of square errors for these outputs
+double calculate_deltas(Network *nnet, double **delta, double *d_output,
+                        double (*dactf)(double))
 {
     int    i, j;
     int    ln;     // layer number
-    double d;
+    double d, err = 0.0;
     Layer  *l = nnet->output_layer;
 
     // calculate deltas for output layer
     ln = nnet->n_layers-2;
     for (i = 0; i < l->n_neurons; ++i) {
         d = d_output[i] - l->y[i];
+        err += d * d;
         delta[ln][i] = -d * dactf(l->a[i]);
     }
 
@@ -387,6 +417,8 @@ void calculate_deltas(Network *nnet, double **delta, double *d_output,
             delta[ln][i] *= dactf(l->a[i]);
         }
     }
+
+    return err;
 }
 
 // given deltas for the nodes,
@@ -415,12 +447,16 @@ void calculate_derivatives(Network *nnet, double **delta, double **deriv)
 // using the provided dataset, for a number of epochs,
 // using lrate as the learning rate and actf as
 // activation function (dactf is its derivative)
-void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
-                 double (*actf)(double), double (*dactf)(double))
+// ---
+// return an approximation to the
+// final sum-of-squares error for network after training
+double batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
+                   double (*actf)(double), double (*dactf)(double))
 {
     int    i, j;
     int    ln;
     int    wn, ws;
+    double err;
     double **deriv;   // per-weight derivatives
     double **delta;   // per-node delta for derivative calculation
     Layer  *l;
@@ -429,13 +465,13 @@ void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
     if (dset->input_size != nnet->input_layer->n_neurons) {
         fprintf(stderr, "batch_train: Size of input in dataset is different \
                          from input layer in neural net\n");
-        return;
+        return 0.0;
     }
 
     if (dset->output_size != nnet->output_layer->n_neurons) {
         fprintf(stderr, "batch_train: Size of output in dataset is different \
                          from output layer in neural net\n");
-        return;
+        return 0.0;
     }
 
     deriv = create_weight_derivatives_matrix(nnet);
@@ -443,6 +479,7 @@ void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
     // TODO: verify if allocations failed
 
     for (j = 0; j < epochs; ++j) {
+        err = 0.0;
         // clear the deriv matrix
         l = nnet->input_layer->next;
         for (ln = 0; ln < nnet->n_layers-1; ++ln, l=l->next) {
@@ -455,7 +492,7 @@ void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
             forward_prop(nnet, actf, dset->input[i]);
 
             // calculate deltas for nodes
-            calculate_deltas(nnet, delta, dset->output[i], dactf);
+            err += calculate_deltas(nnet, delta, dset->output[i], dactf);
 
             // calculate error derivatives for the current input
             calculate_derivatives(nnet, delta, deriv);
@@ -468,10 +505,99 @@ void batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
             ws = l->prev->n_neurons + 1;
             for (i = 0; i < l->n_neurons; ++i)
                 for (wn = 0; wn < ws; ++wn)
-                    W(l, i, wn) += lrate * deriv[ln][i*ws+wn];
+                    W(l, i, wn) -= lrate * deriv[ln][i*ws+wn];
         }
+
+        //printf("Epoch: %d - Total SSE for epoch: %6.4f\n", j, err);
     }
 
+    return err;
+}
+
+void xor_train_test(void)
+{
+    int     i;
+    Network *xor_nn = create_network(2);  // 2 inputs
+    Layer   *l1, *l2;    // layers for manually adjusting weights
+    double  inputs[2];
+    double  err;
+    DataSet dset;
+
+    // middle layer
+    l1 = add_layer(xor_nn, 2);
+
+    // output layer
+    l2 = add_layer(xor_nn, 1);
+
+    // prepare dataset
+    dset.n_cases = 4;
+    dset.input_size = 2;
+    dset.output_size = 1;
+    dset.input = (double**) malloc(sizeof(double*) * dset.n_cases);
+    dset.output = (double**) malloc(sizeof(double*) * dset.n_cases);
+    for (i = 0; i < dset.n_cases; ++i) {
+        dset.input[i] = (double*) malloc(sizeof(double) * dset.input_size);
+        dset.output[i] = (double*) malloc(sizeof(double) * dset.output_size);
+    }
+
+    dset.input[0][0] = 0.0;
+    dset.input[0][1] = 0.0;
+    dset.output[0][0] = 0.0;
+
+    dset.input[1][0] = 0.0;
+    dset.input[1][1] = 1.0;
+    dset.output[1][0] = 1.0;
+
+    dset.input[2][0] = 1.0;
+    dset.input[2][1] = 0.0;
+    dset.output[2][0] = 1.0;
+
+    dset.input[3][0] = 1.0;
+    dset.input[3][1] = 1.0;
+    dset.output[3][0] = 0.0;
+
+    printf("\n### Training a XOR network\n");
+
+
+    printf("Batch training with backpropagation, using 2000 epochs...\n");
+    err = batch_train(xor_nn, &dset, 0.75, 2000, sigmoid, dsigmoid);
+
+    printf("Training concluded, approx. SSE = %f\n", err);
+    printf("Testing trained network:\n");
+
+    // test case (0, 0)
+    inputs[0] = 0.0;
+    inputs[1] = 0.0;
+
+    forward_prop(xor_nn, sigmoid, inputs);
+
+    printf("- Output for (0, 0) = %6.4f\n", xor_nn->output_layer->y[0]);
+
+    // test case (0, 1)
+    inputs[0] = 0.0;
+    inputs[1] = 1.0;
+
+    forward_prop(xor_nn, sigmoid, inputs);
+
+    printf("- Output for (0, 1) = %6.4f\n", xor_nn->output_layer->y[0]);
+
+    // test case (1, 0)
+    inputs[0] = 1.0;
+    inputs[1] = 0.0;
+
+    forward_prop(xor_nn, sigmoid, inputs);
+
+    printf("- Output for (1, 0) = %6.4f\n", xor_nn->output_layer->y[0]);
+
+    // test case (1, 1)
+    inputs[0] = 1.0;
+    inputs[1] = 1.0;
+
+    forward_prop(xor_nn, sigmoid, inputs);
+
+    printf("- Output for (1, 1) = %6.4f\n\n", xor_nn->output_layer->y[0]);
+
+    print_network_structure(xor_nn);
 }
 
 int main(int argc, char **argv)
@@ -479,6 +605,7 @@ int main(int argc, char **argv)
     basic_test();
     xor_test();
     random_init_test();
+    xor_train_test();
 
     return 0;
 }

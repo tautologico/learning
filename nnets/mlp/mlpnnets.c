@@ -15,6 +15,10 @@
 // maximum absolute value of initial weight
 #define MAX_ABS_WEIGHT   1.6
 
+// module variable that controls showing of debug information during
+// training TODO: implement functions to change it?
+int debug_train = 0;
+
 // sigmoid activation function
 double sigmoid(double t)
 {
@@ -345,7 +349,8 @@ double batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
                     W(l, i, wn) -= lrate * deriv[ln][i*ws+wn];
         }
 
-        //printf("Epoch: %d - Total SSE for epoch: %6.4f\n", j, err);
+        if (debug_train)
+            printf("Epoch: %d - Total SSE for epoch: %6.4f\n", j, err);
     }
 
     return err;

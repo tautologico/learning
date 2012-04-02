@@ -350,3 +350,18 @@ double batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
 
     return err;
 }
+
+// allocate dataset arrays based on the number of cases
+// and input/output sizes
+void allocate_dataset_arrays(DataSet *dset)
+{
+    int i;
+
+    dset->input = (double**) malloc(sizeof(double*) * dset->n_cases);
+    dset->output = (double**) malloc(sizeof(double*) * dset->n_cases);
+
+    for (i = 0; i < dset->n_cases; ++i) {
+        dset->input[i] = (double*) malloc(sizeof(double) * dset->input_size);
+        dset->output[i] = (double*) malloc(sizeof(double) * dset->output_size);
+    }
+}

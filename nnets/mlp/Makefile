@@ -17,5 +17,6 @@ iris: testiris.o mlpnnets.o
 
 clean:
 	rm -f *.o
+	rm -f *.gch
 	rm -f basic
 	rm -f iris

@@ -11,19 +11,32 @@
 #include <curand.h>
 
 // constant for the RNG seed
-#define SEED        419217ULL
+//#define SEED        419217ULL
+#define SEED        419229ULL
 
 // maximum absolute value for random initialization of weights
 #define MAX_ABS     1.5f
+
+// learning rate
+#define LRATE       0.75f
 
 // total number of weights
 #define NWEIGHTS    9
 
 // number of active neurons
-#define NEURONS     3
+#define NEURONS          3
+#define NEURONS_HIDDEN   2
+#define NEURONS_OUT      1
 
 // number of deltas (= number of neurons)
-#define NDELTAS     NEURONS
+#define NDELTAS          NEURONS
+#define DELTAS_HIDDEN    NEURONS_HIDDEN
+#define DELTAS_OUT       NEURONS_OUT
+
+#define NCASES           4
+#define INPUT_SIZE       2
+#define HIDDEN_SIZE      2
+#define OUTPUT_SIZE      1
 
 // the network weights on the device
 float *dev_weights;
@@ -38,40 +51,41 @@ float *dev_in;
 
 // hidden outputs and activations (on device)
 float *dev_hidden;
-//float *dev_hidden_a;
 
 // outputs and activations for final layer (on device)
 float *dev_out;
-//float *dev_out_a;
 
 // inputs
 float inputs[] = { 0.0f, 0.0f, 0.0f, 1.0f,
                    1.0f, 0.0f, 1.0f, 1.0f };
 
-int ncases = 4;
-int input_size = 2;
-
-int hidden_size = 2;
+const int ncases = 4;
+const int input_size = 2;
+const int hidden_size = 2;
+const int out_size = 1;
 
 // desired outputs
-float outputs[] = { 0.0f, 1.0f, 1.0f, 0.0f };
+float outputs[] = { 0.1f, 0.9f, 0.9f, 0.1f };
+float *dev_dout;  // for the device
 
 // deltas and derivatives (on the device)
-float *dev_delta;
+float *dev_delta_h;
+float *dev_delta_o;
 float *dev_deriv;
 
-const int l1delta_off = 0;
-const int l2delta_off = 2;
+// errors (device)
+float *dev_err;
+
 
 // sigmoid activation function
-__device__ float sigmoid(float t)
+__device__ float asigmoid(float t)
 {
-    return 1.0 / (1.0 + expf(-t));
+    return 1.0f / (1.0f + expf(-t));
 }
 
 __device__ float dsigmoid(float output)
 {
-    return output * (1 - output);
+    return output * (1.0f - output);
 }
 
 // --- initialization kernels ---------------------------------------------
@@ -114,11 +128,7 @@ __global__ void forward_hidden(float *w, float *input, float *hidden)
         w[toff * 3 + 1] * input[input_ix] +
         w[toff * 3 + 2] * input[input_ix+1];
 
-    // threshold
-    if (h > 0.0f)
-        hidden[tid] = 1.0f;
-    else
-        hidden[tid] = 0.0;
+    hidden[tid] = asigmoid(h);
 }
 
 // kernel for output layer
@@ -133,53 +143,250 @@ __global__ void forward_output(float *w, float *hidden, float *output)
         w[toff+1] * hidden[2*hidden_ix] +
         w[toff+2] * hidden[2*hidden_ix+1];
 
-    // threshold
-    if (o > 0.0f)
-        output[tid] = 1.0f;
-    else
-        output[tid] = 0.0f;
+    output[tid] = asigmoid(o);
 }
 
 
 // --- kernels for backpropagation ----------------------------------------
-__global__ void deltas_output(float *output, float *expected_out, float *delta, int ndeltas)
+
+// launch grid: <<<N, 1>>> for N = number of cases, 1 output neuron
+__global__ void deltas_output(float *output, float *expected_out, float *deltao, float *err)
 {
-    int oid = blockIdx.x;  // one case per block, one output per case
-
-    // TODO: check 
-
+    // there's one delta for each output node
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int did = blockIdx.x * ndeltas + l2delta_off + threadIdx.x;
-    float err;
 
-    err = output[oid] - expected_out[oid];
-    delta[did] = err * err * dsigmoid(output[oid]);
-    // TODO: calculate derivatives of neuron weights?
-    // index for weight: blockIdx.x * NWEIGHTS + l2w_off + threadIdx.x
-    // must sum contributions from all example cases to derivatives, 
-    // possibly needs a reduction
+    err[tid] = expected_out[tid] - output[tid];
+    deltao[tid] = -err[tid] * dsigmoid(output[tid]);
 }
 
-__global__ void deltas_hidden(float *hidden, float *output, float *w, float *delta, int ndeltas)
+// launch grid: <<<N, 2>>> for N = number of cases, 2 hidden neurons
+__global__ void deltas_hidden(float *hidden, float *output, float *w, float *deltah,
+			      float *deltao)
 {
-    //int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int did1 = blockIdx.x * ndeltas + l1delta_off + threadIdx.x;
-    int did2 = blockIdx.x * ndeltas + l2delta_off;
+    // tid is the index for deltah and hidden
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    // oid is the corresponding index in the output layer
+    // there's only one node in output so 1 per block
+    int oid = blockIdx.x;
+    // wid is the index into the weights, taking into account the bias weight
     int wid = l2w_off + threadIdx.x + 1;
 
-    delta[did1] = w[wid] * delta[did2] * dsigmoid(output[blockIdx.x]);
-    // TODO: calculate derivatives of neuron weights?
+    deltah[tid] = w[wid] * deltao[oid] * dsigmoid(hidden[tid]);
 }
 
-// --- main ---------------------------------------------------------------
-int main(int argc, char **argv)
-{
+// launch grid: <<<N, 6>>> for N cases, 6 weights for hidden layer
+__global__ void derivs_hidden(float *input, float *deltah, float *deriv)
+{    
+    // weight index
+    int wid = blockIdx.x * NWEIGHTS + l1w_off + threadIdx.x;
+    // delta index (3 weights per node)
+    int did = blockIdx.x * DELTAS_HIDDEN + (threadIdx.x / 3);
+    // input index (3 weights per node)
+    int iid = blockIdx.x * INPUT_SIZE + (threadIdx.x % 3) - 1;
 
-    if (cudaMalloc((void**) &dev_weights, NWEIGHTS * sizeof(float)) != cudaSuccess) {
+    // divergence due to bias weight
+    float in = (threadIdx.x % 3 == 0? 1.0f : input[iid]);
+
+    deriv[wid] = deltah[did] * in;
+}
+
+// launch grid: <<<N, 3>>> for N cases, 3 weights for output layer
+__global__ void derivs_output(float *hidden, float *deltao, float *deriv)
+{
+    // weight index
+    int wid = blockIdx.x * NWEIGHTS + l2w_off + threadIdx.x;
+    // delta index (3 weights per node)
+    int did = blockIdx.x * DELTAS_OUT + (threadIdx.x / 3);
+    // hidden index (3 weights per node)
+    int hid = blockIdx.x * HIDDEN_SIZE + (threadIdx.x % 3) - 1;
+
+    // divergence due to bias weight
+    float h = (threadIdx.x % 3 == 0? 1.0f : hidden[hid]);
+
+    deriv[wid] = deltao[did] * h;
+}
+
+// <<<N, 9>>> for N cases, 9 derivs per case?
+__global__ void sum_derivs(float *deriv)
+{
+}
+
+// launch grid: <<<1, NWEIGHTS>>> for number of weights
+__global__ void update_weights_nreduc(float *ws, float *deriv, float lrate)
+{
+    float dE = 0.0f;
+    int wid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // sum all derivs for the same weight
+    for (int i = 0; i < NCASES; ++i)
+	dE += deriv[i * NWEIGHTS + wid];
+
+    // update weight
+    ws[wid] -= (lrate * dE);
+}
+
+// --- memory allocations and initialization ------------------------------
+inline float* allocateFloatsDev(int n)
+{
+    float *res;
+
+    if (cudaMalloc((void**) &res, n * sizeof(float)) != cudaSuccess) {
         fprintf(stderr, "Could not allocate memory on the device\n");
         exit(1);
     }
 
-    random_initialize_weights(dev_weights, MAX_ABS, NWEIGHTS);
+    return res;
+}
 
+void allocateDev(void)
+{
+    // weights
+    dev_weights = allocateFloatsDev(NWEIGHTS);
+    
+    // node values
+    dev_in = allocateFloatsDev(ncases * input_size);
+    dev_hidden = allocateFloatsDev(ncases * hidden_size);
+    dev_out = allocateFloatsDev(ncases * out_size);
+
+    // desired outputs and errors on device
+    dev_dout = allocateFloatsDev(ncases * out_size);
+    dev_err = allocateFloatsDev(ncases * out_size);
+    
+    // deltas and derivatives
+    dev_delta_h = allocateFloatsDev(NEURONS_HIDDEN);
+    dev_delta_o = allocateFloatsDev(NEURONS_OUT);
+    dev_deriv = allocateFloatsDev(NWEIGHTS);
+}
+
+void freeDev(void)
+{
+    // weights
+    cudaFree(dev_weights);
+
+    // node values
+    cudaFree(dev_in);
+    cudaFree(dev_hidden);
+    cudaFree(dev_out);
+
+    // desired outputs and errors
+    cudaFree(dev_dout);
+    cudaFree(dev_err);
+    
+    // deltas and derivatives
+    cudaFree(dev_delta_h);
+    cudaFree(dev_deriv);
+    cudaFree(dev_delta_o);
+}
+
+// initialize memory on the device to run kernels
+void memorySetup(void)
+{
+    allocateDev();
+
+    // initialize weights
+    random_initialize_weights(dev_weights, MAX_ABS, NWEIGHTS);	
+    
+    // copy inputs and desired outputs
+    cudaMemcpy(dev_in, inputs, ncases * input_size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(dev_dout, outputs, ncases * out_size * sizeof(float), cudaMemcpyHostToDevice);
+}
+
+void printDevArray(float *devA, int length)
+{
+    float *hostA;
+
+    hostA = (float*) malloc(length * sizeof(float));
+    cudaMemcpy(hostA, devA, length * sizeof(float), cudaMemcpyDeviceToHost);
+
+    for (int i = 0; i < length; ++i)
+	printf("%6.3f ", hostA[i]);
+
+    printf("\n");
+}
+
+// --- training -----------------------------------------------------------
+float batch_train(int epochs, int calc_sse, int print_sse)
+{
+    float err[NCASES * OUTPUT_SIZE];    
+    float sse = 0.0f;
+
+    for (int e = 0; e < epochs; ++e) {
+	// forward propagation for all input cases
+	forward_hidden<<<4, 2>>>(dev_weights, dev_in, dev_hidden);
+	forward_output<<<4, 1>>>(dev_weights, dev_hidden, dev_out);
+
+	// printf("Outputs: ");
+	// printDevArray(dev_out, NCASES * OUTPUT_SIZE);
+    
+	// backprop
+	deltas_output<<<4, 1>>>(dev_out, dev_dout, dev_delta_o, dev_err);
+	deltas_hidden<<<4, 2>>>(dev_hidden, dev_out, dev_weights, dev_delta_h, dev_delta_o);
+
+	// printf("Deltas (hidden): ");
+	// printDevArray(dev_delta_h, DELTAS_HIDDEN);
+	// printf("Deltas (output): ");
+	// printDevArray(dev_delta_o, DELTAS_OUT);
+
+	// calculate SSE for this trial
+	if (calc_sse) {
+	    sse = 0.0f;
+	    cudaMemcpy(err, dev_err, NCASES * OUTPUT_SIZE * sizeof(float), cudaMemcpyDeviceToHost);
+	    for (int i = 0; i < NCASES * OUTPUT_SIZE; ++i) {
+		//printf("%6.3f ", err[i]);
+		sse += (err[i] * err[i]);
+	    }
+
+	    if (print_sse)
+		printf("SSE = %5.3f\n", sse);
+	}
+
+	// calculate derivatives
+	derivs_hidden<<<4, 6>>>(dev_in, dev_delta_h, dev_deriv);
+	derivs_output<<<4, 3>>>(dev_hidden, dev_delta_o, dev_deriv);
+	
+	// update weights
+	update_weights_nreduc<<<1, NWEIGHTS>>>(dev_weights, dev_deriv, LRATE);
+    }
+
+    return sse;
+}
+
+void print_weights(void)
+{
+    float weights[NWEIGHTS];
+
+    cudaMemcpy(weights, dev_weights, NWEIGHTS * sizeof(float), cudaMemcpyDeviceToHost);
+
+    for (int i = 0; i < NWEIGHTS; ++i)
+        printf("%6.4f ", weights[i]);
+    printf("\n");
+}
+
+
+// --- main ---------------------------------------------------------------
+int main(int argc, char **argv)
+{
+    float sse;
+    
+    memorySetup();
+    
+    // print the generated weights
+    printf("Randomly generated weights on the device:\n");
+    print_weights();
+
+    // do training
+    printf("Batch training with 5000 epochs...\n");
+    sse = batch_train(8000, 1, 0);
+
+    printf("Final SSE: %6.3f\n", sse);
+    printf("Outputs: ");
+    printDevArray(dev_out, NCASES * OUTPUT_SIZE);
+    
+    // weights after training
+    printf("Weights after training:\n");
+    print_weights();
+    
+    freeDev();
+
+    return 0;    
 }

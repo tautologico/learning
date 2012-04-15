@@ -163,6 +163,9 @@ void xor_train_test(void)
     // output layer
     l2 = add_layer(xor_nn, 1);
 
+    // initialize weights
+    initialize_weights(xor_nn, SEED);
+
     // prepare dataset
     dset.n_cases = 4;
     dset.input_size = 2;
@@ -193,8 +196,8 @@ void xor_train_test(void)
     printf("\n### Training a XOR network\n");
 
 
-    printf("Batch training with backpropagation, using 2000 epochs...\n");
-    err = batch_train(xor_nn, &dset, 0.75, 2000, sigmoid, dsigmoid);
+    printf("Batch training with backpropagation, using 5000 epochs...\n");
+    err = batch_train(xor_nn, &dset, 0.75, 5000, sigmoid, dsigmoid);
 
     printf("Training concluded, approx. SSE = %f\n", err);
     printf("Testing trained network:\n");

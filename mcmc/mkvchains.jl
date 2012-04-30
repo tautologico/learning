@@ -125,6 +125,8 @@ function neighbors(grid, i, j)
     res
 end
 
+# Gibbs sampling on the hardcore model, 
+# selecting one random vertex per time step
 function hardcore_mcmc(grid, steps)
     k = length(grid)
     delta = 1.0 / (2 * k)

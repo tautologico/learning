@@ -39,10 +39,13 @@ get_outputs(nnet::MLPNNet) = nnet.layers[end].outputs
 type DataSet
     n_cases::Int
     n_fields::Int
+    n_outputs::Int
     data::Array{Float64, 2}
-    # TODO: add expected outputs
+    outs::Array{Float64, 2}
 
-    DataSet(n_cases, n_fields) = new(n_cases, n_fields, zeros(Float64, n_cases, n_fields))
+    DataSet(n_cases, n_fields, n_outputs) =
+        new(n_cases, n_fields, zeros(Float64, n_cases, n_fields),
+                               zeros(Float64, n_cases, n_outputs))
 end
 
 # activation functions

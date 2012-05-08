@@ -40,9 +40,13 @@ type DataSet
     n_cases::Int
     n_fields::Int
     data::Array{Float64, 2}
+    # TODO: add expected outputs
 
     DataSet(n_cases, n_fields) = new(n_cases, n_fields, zeros(Float64, n_cases, n_fields))
 end
+
+# activation functions
+threshold(x::Float64) = x > 0.0? 1.0 : 0.0
 
 # initialize weights of the network randomly, with a maximum absolute value
 function random_weights(nnet::MLPNNet, maxabs::Float64)
@@ -52,14 +56,20 @@ function random_weights(nnet::MLPNNet, maxabs::Float64)
 end
 
 # present input to the neural network, calculating outputs for all layers
-function present_input(nnet::MLPNNet, input::Vector{Float64})
+function present_input(nnet::MLPNNet, input::Vector{Float64}, actf)
 end
 
 # vectorized version of present_input
-function present_input_vec(nnet::MLPNNet, input::Vector{Float64})
-    nnet.layers[1].outputs = nnet.layers[1].weights * [1.0, inputs]
+function present_input_vec(nnet::MLPNNet, inputs::Vector{Float64}, actf)
+    @assert length(inputs) == nnet.n_inputs
+    nnet.layers[1].outputs = map(actf, nnet.layers[1].weights * [1.0, inputs])
+    
     for i in 2:length(nnet.layers)
-        nnet.layers[i].outputs = nnet.layers[i].weights * [1.0, nnet.layers[i-1].outputs]
+        nnet.layers[i].outputs = map(actf,
+                                     nnet.layers[i].weights * [1.0, nnet.layers[i-1].outputs])
     end
     get_outputs(nnet)
+end
+
+function batch_train_bprop(nnet::MLPNNet, train_set::DataSet)
 end

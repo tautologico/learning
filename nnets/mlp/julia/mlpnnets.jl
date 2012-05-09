@@ -6,9 +6,13 @@
 # Andrei de A. Formiga, 2012-05-07
 #
 
+# weights are organized in a 2-dimensional matrix.
+# each line in the matrix corresponds to one neuron 
+# in the current layer, and contains all the weights 
+# arriving in the neuron from the previous layer
 type MLPLayer
     n_neurons::Int
-    weights::Array{Float64,2}
+    weights::Matrix{Float64}
     outputs::Vector{Float64}
 
     function MLPLayer(n_neurons::Int, n_neurons_prev::Int)
@@ -40,8 +44,8 @@ type DataSet
     n_cases::Int
     n_fields::Int
     n_outputs::Int
-    data::Array{Float64, 2}
-    outs::Array{Float64, 2}
+    data::Matrix{Float64}
+    outs::Matrix{Float64}
 
     DataSet(n_cases, n_fields, n_outputs) =
         new(n_cases, n_fields, zeros(Float64, n_cases, n_fields),
@@ -74,5 +78,31 @@ function present_input_vec(nnet::MLPNNet, inputs::Vector{Float64}, actf)
     get_outputs(nnet)
 end
 
-function batch_train_bprop(nnet::MLPNNet, train_set::DataSet)
+function batch_train_bprop_vec(nnet::MLPNNet, train_set::DataSet, epochs::Int, 
+                               lrate::Float64, actf, dactf)
+    # create matrix for deltas
+    deltas = Array(Vector{Float64}, length(nnet.layers))
+    for i = 1:length(nnet.layers)
+        deltas[i] = Array(Float64, nnet.layers[i].n_neurons)
+    end
+       
+    # create derivatives matrix
+    # FIX: weights are per layer
+    deriv = similar(nnet.weights)
+
+    for ep = 1:epochs
+        # forward propagation
+        outs = present_input_vec(nnet, train_set.data[i,:], actf)
+        err = outs - train_set.outs[i,:]
+
+        # deltas for output layer
+        deltas[end] = - err .* map(dactf, outs)
+
+        # propagate deltas backwards
+        for l = length(nnet.layers)-1:-1:1
+            deltas[l] = nnet.layers[l+1].weights[:, 2:]' * deltas[l+1]
+        end
+
+        # TODO: calculate derivatives
+    end
 end

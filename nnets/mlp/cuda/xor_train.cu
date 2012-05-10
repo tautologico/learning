@@ -11,8 +11,8 @@
 #include <curand.h>
 
 // constant for the RNG seed
-//#define SEED        419217ULL
-#define SEED        419229ULL
+#define SEED        419217ULL
+//#define SEED        419229ULL
 
 // maximum absolute value for random initialization of weights
 #define MAX_ABS     1.5f
@@ -177,15 +177,18 @@ __global__ void deltas_hidden(float *hidden, float *output, float *w, float *del
 // launch grid: <<<N, 6>>> for N cases, 6 weights for hidden layer
 __global__ void derivs_hidden(float *input, float *deltah, float *deriv)
 {    
+    // weights per node (2 inputs + bias)
+    const int wpn = INPUT_SIZE + 1;
+
     // weight index
     int wid = blockIdx.x * NWEIGHTS + l1w_off + threadIdx.x;
-    // delta index (3 weights per node)
-    int did = blockIdx.x * DELTAS_HIDDEN + (threadIdx.x / 3);
+    // delta index (3 weights per node: 2 inputs + bias)
+    int did = blockIdx.x * DELTAS_HIDDEN + (threadIdx.x / wpn);
     // input index (3 weights per node)
-    int iid = blockIdx.x * INPUT_SIZE + (threadIdx.x % 3) - 1;
+    int iid = blockIdx.x * INPUT_SIZE + (threadIdx.x % wpn) - 1;
 
     // divergence due to bias weight
-    float in = (threadIdx.x % 3 == 0? 1.0f : input[iid]);
+    float in = (threadIdx.x % wpn == 0? 1.0f : input[iid]);
 
     deriv[wid] = deltah[did] * in;
 }
@@ -193,15 +196,18 @@ __global__ void derivs_hidden(float *input, float *deltah, float *deriv)
 // launch grid: <<<N, 3>>> for N cases, 3 weights for output layer
 __global__ void derivs_output(float *hidden, float *deltao, float *deriv)
 {
+    // weights per node (2 hidden neurons + bias)
+    const int wpn = NEURONS_HIDDEN + 1;
+
     // weight index
     int wid = blockIdx.x * NWEIGHTS + l2w_off + threadIdx.x;
     // delta index (3 weights per node)
-    int did = blockIdx.x * DELTAS_OUT + (threadIdx.x / 3);
+    int did = blockIdx.x * DELTAS_OUT + (threadIdx.x / wpn);
     // hidden index (3 weights per node)
-    int hid = blockIdx.x * HIDDEN_SIZE + (threadIdx.x % 3) - 1;
+    int hid = blockIdx.x * HIDDEN_SIZE + (threadIdx.x % wpn) - 1;
 
     // divergence due to bias weight
-    float h = (threadIdx.x % 3 == 0? 1.0f : hidden[hid]);
+    float h = (threadIdx.x % wpn == 0? 1.0f : hidden[hid]);
 
     deriv[wid] = deltao[did] * h;
 }

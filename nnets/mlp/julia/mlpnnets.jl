@@ -24,6 +24,7 @@ type MLPNNet
     n_inputs::Int
     layers::Vector{MLPLayer}
 
+    # params: number of inputs, number of neurons per layer 
     function MLPNNet(n_inputs::Int, layers::Vector{Int})
         if length(layers) == 0
             error("MLPNNet: can't create network with 0 layers")
@@ -40,6 +41,7 @@ end
 
 get_outputs(nnet::MLPNNet) = nnet.layers[end].outputs
 
+# data and outs have one case per line of each matrix
 type DataSet
     n_cases::Int
     n_fields::Int
@@ -48,17 +50,23 @@ type DataSet
     outs::Matrix{Float64}
 
     DataSet(n_cases, n_fields, n_outputs) =
-        new(n_cases, n_fields, zeros(Float64, n_cases, n_fields),
-                               zeros(Float64, n_cases, n_outputs))
+        new(n_cases, n_fields, n_outputs, zeros(Float64, n_cases, n_fields),
+            zeros(Float64, n_cases, n_outputs))
 end
 
-# activation functions
+### activation functions
 threshold(x::Float64) = x > 0.0? 1.0 : 0.0
+sigmoid(x::Float64) = 1.0 / (1.0 + exp(-x))
+
+# y is assumed to be the output of a node with sigmoid activation
+dsigmoid(y::Float64) = y * (1.0 - y)  
+
 
 # initialize weights of the network randomly, with a maximum absolute value
 function random_weights(nnet::MLPNNet, maxabs::Float64)
     for l in nnet.layers
-        l.weights = map(x -> (rand() - 0.5) * maxabs / 2, l.weights)
+        # l.weights = map(x -> (rand() - 0.5) * maxabs * 2, l.weights)
+        l.weights = (rand(size(l.weights)) - 0.5) * maxabs * 2
     end
 end
 
@@ -80,29 +88,50 @@ end
 
 function batch_train_bprop_vec(nnet::MLPNNet, train_set::DataSet, epochs::Int, 
                                lrate::Float64, actf, dactf)
-    # create matrix for deltas
+    # create arrays for deltas (one array per layer, one delta per node)
     deltas = Array(Vector{Float64}, length(nnet.layers))
     for i = 1:length(nnet.layers)
         deltas[i] = Array(Float64, nnet.layers[i].n_neurons)
     end
        
-    # create derivatives matrix
-    # FIX: weights are per layer
-    deriv = similar(nnet.weights)
-
     for ep = 1:epochs
-        # forward propagation
-        outs = present_input_vec(nnet, train_set.data[i,:], actf)
-        err = outs - train_set.outs[i,:]
-
-        # deltas for output layer
-        deltas[end] = - err .* map(dactf, outs)
-
-        # propagate deltas backwards
-        for l = length(nnet.layers)-1:-1:1
-            deltas[l] = nnet.layers[l+1].weights[:, 2:]' * deltas[l+1]
+        # create matrices for derivatives (1 matrix per layer, 1 deriv. per weight)
+        derivs = Array(Matrix{Float64}, length(nnet.layers))
+        for i = 1:length(derivs)
+            derivs[i] = zeros(size(nnet.layers[i].weights))
         end
 
-        # TODO: calculate derivatives
+        sse = 0.0
+        for i = 1:train_set.n_cases
+            # forward propagation
+            outs = present_input_vec(nnet, vec(train_set.data[i,:]), actf)
+            err = vec(train_set.outs[i,:]) - outs
+            sse += sum(err .^ 2)
+            
+            # deltas for output layer
+            deltas[end] = - err .* map(dactf, outs)
+
+            # propagate deltas backwards
+            for l = length(nnet.layers)-1:-1:1
+                deltas[l] = (nnet.layers[l+1].weights[:, 2:]' * deltas[l+1]) .* map(dactf, nnet.layers[l].outputs)
+            end
+
+            # derivatives for first layer
+            derivs[1] += deltas[1] * [1.0 train_set.data[i,:]]
+            
+            # derivatives for remaining layers
+            for l = 2:length(nnet.layers)
+                derivs[l] += deltas[l] * [1.0 nnet.layers[l-1].outputs']
+            end
+        end
+
+        if mod(ep, 10) == 0
+            println("SSE for epoch: $sse")
+        end
+      
+        # update weights based on derivatives
+        for l = 1:length(nnet.layers)
+            nnet.layers[l].weights -= derivs[l] .* lrate
+        end
     end
 end

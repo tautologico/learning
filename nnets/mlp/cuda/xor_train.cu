@@ -121,12 +121,12 @@ __global__ void forward_hidden(float *w, float *input, float *hidden)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int input_ix = blockIdx.x * blockDim.x;
-    int toff = threadIdx.x + l1w_off;
+    int toff = l1w_off + threadIdx.x * 3;    // 3 weights per neuron in hidden layer
     float h;
 
-    h = w[toff * 3] * 1.0f +
-        w[toff * 3 + 1] * input[input_ix] +
-        w[toff * 3 + 2] * input[input_ix+1];
+    h = w[toff] * 1.0f +
+        w[toff + 1] * input[input_ix] +
+        w[toff + 2] * input[input_ix+1];
 
     hidden[tid] = asigmoid(h);
 }
@@ -136,7 +136,7 @@ __global__ void forward_output(float *w, float *hidden, float *output)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int hidden_ix = blockIdx.x * blockDim.x;
-    int toff = threadIdx.x + l2w_off;
+    int toff = l2w_off + threadIdx.x;        // 3 weights per neuron, but only 1 neuron
     float o;
 
     o = w[toff] * 1.0f +

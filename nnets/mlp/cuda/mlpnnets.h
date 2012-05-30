@@ -14,6 +14,8 @@
 struct MLPLayer
 {
     int   nNeurons;
+    int   weightsPerNeuron;
+    int   weightOffset;
     float *d_outs;
     float *d_deltas;
 };

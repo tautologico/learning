@@ -26,10 +26,11 @@ struct MLPNetwork
     MLPLayer **layers;
     float    *d_weights;
     int      nWeights;
+    int      nCases;      // number of input cases stored on device
 };
 
 // network functions
-MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer);
+MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer, int nCases);
 void DestroyNetwork(MLPNetwork *net);
 void RandomWeights(MLPNetwork *net, float max_abs, long seed);
 void RandomWeightsGen(MLPNetwork *net, float max_abs, curandGenerator_t gen);

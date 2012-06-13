@@ -88,7 +88,7 @@ void DestroyLayer(MLPLayer *layer)
     free(layer);
 }
 
-MLPLayer *CreateLayer(int nNeurons, int nNeuronsPrev, int wOffset)
+MLPLayer *CreateLayer(int nNeurons, int nNeuronsPrev, int wOffset, int nCases)
 {
     MLPLayer *result = (MLPLayer*) calloc(1, sizeof(MLPLayer));
 
@@ -98,14 +98,15 @@ MLPLayer *CreateLayer(int nNeurons, int nNeuronsPrev, int wOffset)
     result->nNeurons = nNeurons;
 
     // allocate outputs and deltas on device
-    result->d_outs = allocateFloatsDev(nNeurons);
+    result->d_outs = allocateFloatsDev(nNeurons * nCases);
 
     if (result->d_outs == NULL) {
         DestroyLayer(result);
         return NULL;
     }
 
-    result->d_deltas = allocateFloatsDev(nNeurons);
+    // TODO: deltas allocated per case?
+    result->d_deltas = allocateFloatsDev(nNeurons * nCases);
 
     if (result->d_deltas == NULL) {
         DestroyLayer(result);
@@ -118,7 +119,12 @@ MLPLayer *CreateLayer(int nNeurons, int nNeuronsPrev, int wOffset)
     return result;
 }
 
-MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer)
+// Create a MLP neural network for execution on the GPU.
+// nLayers: number of layers
+// neuronsPerLayer: array of ints (size equal to nLayers) with the
+//                  number of neurons for each layer
+// nCases: Number of input cases to process in parallel
+MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer, int nCases)
 {
     MLPNetwork *result;
 
@@ -136,7 +142,7 @@ MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer)
     }
 
     // create input layer
-    result->layers[0] = CreateLayer(neuronsPerLayer[0], 0, 0);
+    result->layers[0] = CreateLayer(neuronsPerLayer[0], 0, 0, nCases);
     if (result->layers[0] == NULL) {
         DestroyNetwork(result);
         return NULL;
@@ -146,7 +152,7 @@ MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer)
     int nwTotal = 0;
     int nwPrev = neuronsPerLayer[0];        
     for (int i = 1; i < nLayers; ++i) {
-        result->layers[i] = CreateLayer(neuronsPerLayer[i], nwPrev, nwTotal);
+        result->layers[i] = CreateLayer(neuronsPerLayer[i], nwPrev, nwTotal, nCases);
         if (result->layers[i] == NULL) {
             DestroyNetwork(result);
             return NULL;
@@ -191,20 +197,48 @@ void DestroyNetwork(MLPNetwork *net)
 // all input cases are computed in parallel
 //
 // grid will be <<<Nc, Nn>>> for Nc input cases and Nn neurons in layer
-__global__ void forward_layer(MLPNetwork *net, int ixLayer)  // FIX: *net is not in device memory!
+__global__ void forward_layer(float *d_weights, int weightOffset, int weightsPerNeuron,
+                              float *d_ins, int neuronsPrev, float *d_outs)
 {
-    int neuronsPrev = net->layers[ixLayer-1]->nNeurons; // assume layer 0 is input, never called
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int ixPrev = (blockIdx.x * blockDim.x) * neuronsPrev;
-    int toff = net->layers[ixLayer]->weightOffset +
-        (threadIdx.x * net->layers[ixLayer]->weightsPerNeuron); // TODO: constants???
+    int ixIn = (blockIdx.x * blockDim.x) * neuronsPrev;
+    int toff = weightOffset + (threadIdx.x * weightsPerNeuron);
 
-    float a = net->d_weights[toff];
+    // bias input
+    float a = d_weights[toff];
 
-    for (int i = 1; i < net->layers[ixLayer]->weightsPerNeuron; ++i)
-        a += net->d_weights[toff+i] * net->layers[ixLayer-1]->d_outs[ixPrev];
+    for (int i = 1; i < weightsPerNeuron; ++i)
+        a += d_weights[toff+i] * d_ins[ixIn];
 
     // TODO: make it possible to use other activation functions?
     // (maybe using templates)
-    net->layers[ixLayer]->d_outs[tid] = asigmoid(a);
+    d_outs[tid] = asigmoid(a);
+}
+
+// present a vector of input cases to the network nnet and do forward propagation.
+// inputs is assumed to be in host memory, and of size equal to nnet->nCases
+void PresentInputs(MLPNetwork *nnet, float *inputs) // FIX: d_outs in MLPNetwork is for 1 case only!
+{
+    int nInputs = nnet->layers[0]->nNeurons;
+
+    // copy inputs to layer 0 on network
+    cudaMemcpy(nnet->layers[0]->d_outs, inputs,
+               nInputs * nnet->nCases * sizeof(float),
+               cudaMemcpyHostToDevice);
+
+    int nn;
+    for (int l = 1; l < nnet->nLayers; ++l) {
+        nn = nnet->layers[l]->nNeurons;
+        forward_layer<<<nnet->nCases, nn>>>(nnet->d_weights,
+                                            nnet->layers[l]->weightOffset,
+                                            nnet->layers[l]->weightsPerNeuron,
+                                            nnet->layers[l-1]->d_outs,
+                                            nnet->layers[l-1]->nNeurons,
+                                            nnet->layers[l]->d_outs);
+    }
+    
+}
+
+void CopyNetworkOutputs(MLPNetwork *nnet, float *outs, int nCases)
+{
 }

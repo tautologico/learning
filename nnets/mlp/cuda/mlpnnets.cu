@@ -216,7 +216,8 @@ __global__ void forward_layer(float *d_weights, int weightOffset, int weightsPer
 }
 
 // present a vector of input cases to the network nnet and do forward propagation.
-// inputs is assumed to be in host memory, and of size equal to nnet->nCases
+// inputs is assumed to be in host memory, and of size equal to N * nnet->nCases,
+// where N is the number of inputs to the network
 void PresentInputs(MLPNetwork *nnet, float *inputs) // FIX: d_outs in MLPNetwork is for 1 case only!
 {
     int nInputs = nnet->layers[0]->nNeurons;
@@ -239,6 +240,14 @@ void PresentInputs(MLPNetwork *nnet, float *inputs) // FIX: d_outs in MLPNetwork
     
 }
 
-void CopyNetworkOutputs(MLPNetwork *nnet, float *outs, int nCases)
+// Copy the outputs for network nnet, stored in device memory, to
+// host memory pointed to by outs. outs must have size equal to N * nnet->nCases,
+// where N is the number of output neurons in the network
+void CopyNetworkOutputs(MLPNetwork *nnet, float *outs)
 {
+    MLPLayer *last = nnet->layers[nnet->nLayers-1];
+    
+    cudaMemcpy(outs, last->d_outs,
+               last->nNeurons * nnet->nCases * sizeof(float),
+               cudaMemcpyDeviceToHost);
 }

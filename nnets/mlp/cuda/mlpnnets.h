@@ -11,6 +11,9 @@
 
 #define __MLPNNETS_H
 
+#include <curand.h>
+
+
 struct MLPLayer
 {
     int   nNeurons;
@@ -36,5 +39,6 @@ void RandomWeights(MLPNetwork *net, float max_abs, long seed);
 void RandomWeightsGen(MLPNetwork *net, float max_abs, curandGenerator_t gen);
 void PresentInputs(MLPNetwork *nnet, float *inputs);
 void CopyNetworkOutputs(MLPNetwork *nnet, float *outs);
+void PrintWeights(MLPNetwork *nnet);
 
 #endif                                                      /* __MLPNNETS_H */

@@ -9,7 +9,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <curand.h>
 
 #include "mlpnnets.h"
 
@@ -218,7 +217,7 @@ __global__ void forward_layer(float *d_weights, int weightOffset, int weightsPer
 // present a vector of input cases to the network nnet and do forward propagation.
 // inputs is assumed to be in host memory, and of size equal to N * nnet->nCases,
 // where N is the number of inputs to the network
-void PresentInputs(MLPNetwork *nnet, float *inputs) // FIX: d_outs in MLPNetwork is for 1 case only!
+void PresentInputs(MLPNetwork *nnet, float *inputs)
 {
     int nInputs = nnet->layers[0]->nNeurons;
 
@@ -250,4 +249,24 @@ void CopyNetworkOutputs(MLPNetwork *nnet, float *outs)
     cudaMemcpy(outs, last->d_outs,
                last->nNeurons * nnet->nCases * sizeof(float),
                cudaMemcpyDeviceToHost);
+}
+
+void PrintWeights(MLPNetwork *nnet)
+{
+    float *h_weights;
+
+    h_weights = (float*) malloc(nnet->nWeights * sizeof(float));
+
+    if (h_weights == NULL) {
+        printf("Error allocating host memory to copy weights.\n");
+    }
+    else {
+        cudaMemcpy(h_weights, nnet->d_weights, nnet->nWeights * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+        
+        for (int i = 0; i < nnet->nWeights; ++i) {
+            printf("%4.5f ", h_weights[i]);
+        }
+        printf("\n");        
+    }
 }

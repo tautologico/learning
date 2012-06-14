@@ -13,6 +13,10 @@
 
 #include <curand.h>
 
+// constants for activation functions
+#define ACTF_THRESHOLD            0
+#define ACTF_SIGMOID              1
+
 
 struct MLPLayer
 {
@@ -37,7 +41,7 @@ MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer, int nCases);
 void DestroyNetwork(MLPNetwork *net);
 void RandomWeights(MLPNetwork *net, float max_abs, long seed);
 void RandomWeightsGen(MLPNetwork *net, float max_abs, curandGenerator_t gen);
-void PresentInputs(MLPNetwork *nnet, float *inputs);
+void PresentInputs(MLPNetwork *nnet, float *inputs, int actf);
 void CopyNetworkOutputs(MLPNetwork *nnet, float *outs);
 float *GetLayerOutputs(MLPNetwork *nnet, int ixLayer);
 void PrintWeights(MLPNetwork *nnet);

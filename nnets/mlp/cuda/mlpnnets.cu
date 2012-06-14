@@ -217,10 +217,36 @@ __global__ void forward_layer(float *d_weights, int weightOffset, int weightsPer
     d_outs[tid] = asigmoid(a);
 }
 
+// calculate outputs of one layer using a threshold activation,
+// assuming the previous layer was already calculated; the outputs
+// corresponding to all input cases are computed in parallel
+//
+// grid will be <<<Nc, Nn>>> for Nc input cases and Nn neurons in layer
+__global__ void forward_layer_threshold(float *d_weights, int weightOffset,
+                                        int weightsPerNeuron,
+                                        float *d_ins, int neuronsPrev,
+                                        float *d_outs)
+{
+    // weightsPerNeuron is always = to neuronsPrev+1
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int ixIn = blockIdx.x * neuronsPrev;
+    int toff = weightOffset + (threadIdx.x * weightsPerNeuron);
+
+    // bias input
+    float a = d_weights[toff];
+
+    for (int i = 1; i < weightsPerNeuron; ++i)
+        a += d_weights[toff + i] * d_ins[ixIn + i-1];
+
+    // TODO: make it possible to use other activation functions?
+    // (maybe using templates)
+    d_outs[tid] = (a > 0.0f? 1.0f : 0.0f);
+}
+
 // present a vector of input cases to the network nnet and do forward propagation.
 // inputs is assumed to be in host memory, and of size equal to N * nnet->nCases,
 // where N is the number of inputs to the network
-void PresentInputs(MLPNetwork *nnet, float *inputs)
+void PresentInputs(MLPNetwork *nnet, float *inputs, int actf)
 {
     int nInputs = nnet->layers[0]->nNeurons;
 
@@ -232,12 +258,20 @@ void PresentInputs(MLPNetwork *nnet, float *inputs)
     int nn;
     for (int l = 1; l < nnet->nLayers; ++l) {
         nn = nnet->layers[l]->nNeurons;
-        forward_layer<<<nnet->nCases, nn>>>(nnet->d_weights,
-                                            nnet->layers[l]->weightOffset,
-                                            nnet->layers[l]->weightsPerNeuron,
-                                            nnet->layers[l-1]->d_outs,
-                                            nnet->layers[l-1]->nNeurons,
-                                            nnet->layers[l]->d_outs);
+        if (actf == ACTF_THRESHOLD)
+            forward_layer_threshold<<<nnet->nCases, nn>>>(nnet->d_weights,
+                                                nnet->layers[l]->weightOffset,
+                                                nnet->layers[l]->weightsPerNeuron,
+                                                nnet->layers[l-1]->d_outs,
+                                                nnet->layers[l-1]->nNeurons,
+                                                nnet->layers[l]->d_outs);
+        else
+            forward_layer<<<nnet->nCases, nn>>>(nnet->d_weights,
+                                                nnet->layers[l]->weightOffset,
+                                                nnet->layers[l]->weightsPerNeuron,
+                                                nnet->layers[l-1]->d_outs,
+                                                nnet->layers[l-1]->nNeurons,
+                                                nnet->layers[l]->d_outs);
     }
     
 }

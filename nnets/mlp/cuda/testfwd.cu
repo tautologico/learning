@@ -50,7 +50,8 @@ int main(int argc, char **argv)
 
     // initialize weights
     printf("* Initializing weights\n");
-    RandomWeights(xornn, MAX_ABS, SEED);
+    cudaMemcpy(xornn->d_weights, weights, xornn->nWeights * sizeof(float),
+               cudaMemcpyHostToDevice);
 
     // print weights
     printf("* Weights for network:\n# ");
@@ -58,8 +59,24 @@ int main(int argc, char **argv)
     
     // present inputs and do forward propagation
     printf("* Calculating outputs for input cases\n");
-    PresentInputs(xornn, inputs);
+    PresentInputs(xornn, inputs, ACTF_THRESHOLD);
 
+    float *outs;
+    for (int i = 0; i < 3; ++i) {
+        printf("* Outputs for layer %d (off=%d, wPN=%d):\n", i,
+               xornn->layers[i]->weightOffset, xornn->layers[i]->weightsPerNeuron);
+        outs = GetLayerOutputs(xornn, i);
+        if (outs == NULL)
+            printf("! Couldn't get outputs for layer %d\n", i);
+        else {
+            for (int j = 0; j < xornn->layers[i]->nNeurons * xornn->nCases; ++j) {
+                printf("%5.3f ", outs[j]);
+            }
+            printf("\n");
+        }
+        free(outs);
+    }
+    
     // copy outputs to host memory
     CopyNetworkOutputs(xornn, outputs);
 

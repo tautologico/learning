@@ -46,7 +46,7 @@ float outputs[] = { 0.0f, 1.0f, 1.0f, 0.0f };
 __global__ void calculate_hidden(float *dev_hw, float *input, float *hidden)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int input_ix = blockIdx.x * blockDim.x;
+    int input_ix = blockIdx.x * 2;  // 2 neurons in the previous layer
     int toff = threadIdx.x;
     float h;
 
@@ -65,13 +65,13 @@ __global__ void calculate_hidden(float *dev_hw, float *input, float *hidden)
 __global__ void calculate_output(float *dev_ow, float *hidden, float *output)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int hidden_ix = blockIdx.x * blockDim.x;
+    int hidden_ix = blockIdx.x * 2;  // 2 neurons in the previous layer
     int toff = threadIdx.x;    
     float o;
 
     o = dev_ow[toff] * 1.0f +
-        dev_ow[toff+1] * hidden[2*hidden_ix] +
-        dev_ow[toff+2] * hidden[2*hidden_ix+1];
+        dev_ow[toff+1] * hidden[hidden_ix] +
+        dev_ow[toff+2] * hidden[hidden_ix+1];
 
     // threshold
     if (o > 0.0f)

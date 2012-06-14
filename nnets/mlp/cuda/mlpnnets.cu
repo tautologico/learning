@@ -132,6 +132,8 @@ MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer, int nCases)
     if (result == NULL)
         return NULL;
 
+    result->nCases = nCases;
+    
     result->nLayers = nLayers;
     result->layers = (MLPLayer**) calloc(nLayers, sizeof(MLPLayer*));
 
@@ -199,15 +201,16 @@ void DestroyNetwork(MLPNetwork *net)
 __global__ void forward_layer(float *d_weights, int weightOffset, int weightsPerNeuron,
                               float *d_ins, int neuronsPrev, float *d_outs)
 {
+    // weightsPerNeuron is always = to neuronsPrev+1
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int ixIn = (blockIdx.x * blockDim.x) * neuronsPrev;
+    int ixIn = blockIdx.x * neuronsPrev;
     int toff = weightOffset + (threadIdx.x * weightsPerNeuron);
 
     // bias input
     float a = d_weights[toff];
 
     for (int i = 1; i < weightsPerNeuron; ++i)
-        a += d_weights[toff+i] * d_ins[ixIn];
+        a += d_weights[toff + i] * d_ins[ixIn + i-1];
 
     // TODO: make it possible to use other activation functions?
     // (maybe using templates)
@@ -261,6 +264,7 @@ void PrintWeights(MLPNetwork *nnet)
         printf("Error allocating host memory to copy weights.\n");
     }
     else {
+        // TODO: check cudaMemcpy for errors
         cudaMemcpy(h_weights, nnet->d_weights, nnet->nWeights * sizeof(float),
                    cudaMemcpyDeviceToHost);
         
@@ -269,4 +273,20 @@ void PrintWeights(MLPNetwork *nnet)
         }
         printf("\n");        
     }
+}
+
+// return an array of floats with the outputs for layer with index ixLayer
+float *GetLayerOutputs(MLPNetwork *nnet, int ixLayer)
+{
+    int   length = nnet->layers[ixLayer]->nNeurons * nnet->nCases;
+    float *result = (float*) malloc(length * sizeof(float));
+
+    if (result == NULL)
+        return NULL;
+
+    // TODO: check cudaMemcpy for errors
+    cudaMemcpy(result, nnet->layers[ixLayer]->d_outs,
+               length * sizeof(float), cudaMemcpyDeviceToHost);
+
+    return result;
 }

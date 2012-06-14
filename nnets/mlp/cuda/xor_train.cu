@@ -120,7 +120,7 @@ void random_initialize_weights(float *w, float max_abs, int nweights)
 __global__ void forward_hidden(float *w, float *input, float *hidden)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int input_ix = blockIdx.x * blockDim.x;
+    int input_ix = blockIdx.x * 2;           // 2 neurons in the previous layer
     int toff = l1w_off + threadIdx.x * 3;    // 3 weights per neuron in hidden layer
     float h;
 
@@ -135,13 +135,13 @@ __global__ void forward_hidden(float *w, float *input, float *hidden)
 __global__ void forward_output(float *w, float *hidden, float *output)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int hidden_ix = blockIdx.x * blockDim.x;
+    int hidden_ix = blockIdx.x * 2;          // 2 neurons in the previous layer
     int toff = l2w_off + threadIdx.x;        // 3 weights per neuron, but only 1 neuron
     float o;
 
     o = w[toff] * 1.0f +
-        w[toff+1] * hidden[2*hidden_ix] +
-        w[toff+2] * hidden[2*hidden_ix+1];
+        w[toff+1] * hidden[hidden_ix] +
+        w[toff+2] * hidden[hidden_ix+1];
 
     output[tid] = asigmoid(o);
 }

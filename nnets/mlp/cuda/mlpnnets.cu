@@ -191,7 +191,9 @@ void DestroyNetwork(MLPNetwork *net)
 }
 
 
+// ------------------------------------------------------------------------
 // --- forward propagation ------------------------------------------------
+// ------------------------------------------------------------------------
 
 // calculate outputs of one layer, assuming the previous
 // layer was already calculated; the outputs corresponding to
@@ -204,16 +206,14 @@ __global__ void forward_layer(float *d_weights, int weightOffset, int weightsPer
     // weightsPerNeuron is always = to neuronsPrev+1
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int ixIn = blockIdx.x * neuronsPrev;
-    int toff = weightOffset + (threadIdx.x * weightsPerNeuron);
+    int wid = weightOffset + (threadIdx.x * weightsPerNeuron);
 
     // bias input
-    float a = d_weights[toff];
+    float a = d_weights[wid];
 
     for (int i = 1; i < weightsPerNeuron; ++i)
-        a += d_weights[toff + i] * d_ins[ixIn + i-1];
+        a += d_weights[wid + i] * d_ins[ixIn + i-1];
 
-    // TODO: make it possible to use other activation functions?
-    // (maybe using templates)
     d_outs[tid] = asigmoid(a);
 }
 
@@ -230,16 +230,14 @@ __global__ void forward_layer_threshold(float *d_weights, int weightOffset,
     // weightsPerNeuron is always = to neuronsPrev+1
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int ixIn = blockIdx.x * neuronsPrev;
-    int toff = weightOffset + (threadIdx.x * weightsPerNeuron);
+    int wid = weightOffset + (threadIdx.x * weightsPerNeuron);
 
     // bias input
-    float a = d_weights[toff];
+    float a = d_weights[wid];
 
     for (int i = 1; i < weightsPerNeuron; ++i)
-        a += d_weights[toff + i] * d_ins[ixIn + i-1];
+        a += d_weights[wid + i] * d_ins[ixIn + i-1];
 
-    // TODO: make it possible to use other activation functions?
-    // (maybe using templates)
     d_outs[tid] = (a > 0.0f? 1.0f : 0.0f);
 }
 
@@ -275,6 +273,54 @@ void PresentInputs(MLPNetwork *nnet, float *inputs, int actf)
     }
     
 }
+
+
+// ------------------------------------------------------------------------
+// --- backpropagation ----------------------------------------------------
+// ------------------------------------------------------------------------
+
+// Calculate the deltas for each neuron in the output layer, and the
+// error between the actual and expected outputs
+//
+// grid should be <<<Nc, Nn>>> for Nc cases and Nn neurons in layer
+__global__ void deltas_output(float *outs, float *expected, float *d_deltas,
+                              float *err)
+{
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    err[tid] = expected[tid] - outs[tid];
+    d_deltas[tid] = -err[tid] * dsigmoid(outs[tid]);
+}
+
+// Calculate the deltas for each neuron in a hidden layer
+//
+// grid should be <<<Nc, Nn>>> for Nc cases and Nn neurons in layer
+__global__ void deltas_hlayer(float *outs, float *d_weights, float *d_deltas,
+                              float *d_dltnext, int neuronsNext,
+                              int nxtLayerWOffset, int weightsPerNeuronNxt)
+{
+    // index for delta being calculated on hidden layer
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    // index for first delta on next layer
+    int oid = blockIdx.x * neuronsNext;
+    // index for relevant weights (neurons in next layer)
+    int wid = nxtLayerWOffset + threadIdx.x + 1;  // +1 to account for bias weight
+
+    d_deltas[tid] = 0.0f;
+    for (int i = 0; i < neuronsNext; ++i, wid += weightsPerNeuronNxt)
+        d_deltas[tid] += d_weights[wid] * d_dltnext[oid+i] * dsigmoid(outs[tid]);
+}
+
+
+// Calculate the derivatives of the error relative to each weight
+__global__ void derivs_layer()
+{
+}
+
+
+// ------------------------------------------------------------------------
+// --- utility functions --------------------------------------------------
+// ------------------------------------------------------------------------
 
 // Copy the outputs for network nnet, stored in device memory, to
 // host memory pointed to by outs. outs must have size equal to N * nnet->nCases,

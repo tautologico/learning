@@ -160,8 +160,7 @@ __global__ void deltas_output(float *output, float *expected_out, float *deltao,
 }
 
 // launch grid: <<<N, 2>>> for N = number of cases, 2 hidden neurons
-__global__ void deltas_hidden(float *hidden, float *output, float *w, float *deltah,
-			      float *deltao)
+__global__ void deltas_hidden(float *hidden, float *w, float *deltah, float *deltao)
 {
     // tid is the index for deltah and hidden
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -326,7 +325,7 @@ float batch_train(int epochs, int calc_sse, int print_sse)
     
 	// backprop
 	deltas_output<<<4, 1>>>(dev_out, dev_dout, dev_delta_o, dev_err);
-	deltas_hidden<<<4, 2>>>(dev_hidden, dev_out, dev_weights, dev_delta_h, dev_delta_o);
+	deltas_hidden<<<4, 2>>>(dev_hidden, dev_weights, dev_delta_h, dev_delta_o);
 
 	// printf("Deltas (hidden): ");
 	// printDevArray(dev_delta_h, DELTAS_HIDDEN);

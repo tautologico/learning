@@ -313,8 +313,22 @@ __global__ void deltas_hlayer(float *outs, float *d_weights, float *d_deltas,
 
 
 // Calculate the derivatives of the error relative to each weight
-__global__ void derivs_layer()
+//
+// grid should be <<<Nc, Nw>>> for Nc cases and Nw total weights for layer
+__global__ void derivs_layer(float *d_inputs, float *d_deltas, float *d_derivs,
+			     int nNeurons, int neuronsPrev, 
+			     int nWeights, int weightsPerNeuron, int weightOffset)
 {
+    // weight index
+    int wid = blockIdx.x * nWeights + weightOffset + threadIdx.x;
+    // delta index
+    int did = blockIdx.x * nNeurons + (threadIdx.x / weightsPerNeuron);
+    // input index
+    int iid = blockIdx.x * neuronsPrev + (threadIdx.x % weightsPerNeuron) - 1;
+
+    float inp = (threadIdx.x % weightsPerNeuron == 0? 1.0f : d_inputs[iid]);
+
+    d_derivs[wid] = d_deltas[did] * inp;
 }
 
 

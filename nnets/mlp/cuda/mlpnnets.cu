@@ -331,6 +331,114 @@ __global__ void derivs_layer(float *d_inputs, float *d_deltas, float *d_derivs,
     d_derivs[wid] = d_deltas[did] * inp;
 }
 
+//__global__ sum_derivs(float *d_derivs)
+//{
+//}
+
+// launch grid: <<<1, NWEIGHTS>>> for number of weights
+// TODO: do a proper reduction instead of a set number of sums
+__global__ void update_weights_nreduc(float *d_weights, float *d_derivs, float lrate,
+                                      int nCases, int nWeights)
+{
+    float dE = 0.0f;
+    int wid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // sum all derivs for the same weight
+    for (int i = 0; i < nCases; ++i)
+	dE += d_derivs[i * nWeights + wid];
+
+    // update weight
+    d_weights[wid] -= (lrate * dE);
+}
+
+void TransferDataSetToDevice(DataSet *data)
+{
+    if (data->location == LOC_HOST) {
+        int nFloatsIn = data->nCases * data->inputSize;
+        int nFloatsOut = data->nCases * data->outputSize;
+
+        // allocate memory for dataset in device
+        data->d_inputs = allocateFloatsDev(nFloatsIn);
+        data->d_outputs = allocateFloatsDev(nFloatsOut);
+
+        // copy dataset to device // TODO: check result of memcpy
+        cudaMemcpy(data->d_inputs, data->inputs,
+                   nFloatsIn * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(data->d_outputs, data->outputs,
+                   nFloatsOut * sizeof(float), cudaMemcpyHostToDevice);
+
+        // change location specifier
+        data->location = LOC_BOTH;
+    }
+}
+
+void BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs, float lrate)
+{
+    float *d_err;
+    float *d_derivs;
+    float sse = 0.0f;
+    MLPLayer *outLayer = nnet->layers[nnet->nLayers - 1];
+    int nOutputs = outLayer->nNeurons;
+
+    TransferDataSetToDevice(data);
+
+    // allocate space for errors
+    d_err = allocateFloatsDev(nOutputs);
+
+    // allocate memory for derivatives
+    d_derivs = allocateFloatsDev(data->nCases * nnet->nWeights);
+
+    for (int e = 0; e < epochs; ++e) {
+        // forward propagation of all the cases
+        PresentInputs(nnet, data->d_inputs, ACTF_SIGMOID);
+
+        // backpropagation: calculation of deltas
+        deltas_output<<<data->nCases, nOutputs>>>(outLayer->d_outs,
+                                                  data->d_outputs,
+                                                  outLayer->d_deltas,
+                                                  d_err);
+
+        MLPLayer *layer;
+        MLPLayer *nextLayer = outLayer;
+        for (int l = nnet->nLayers-2; l > 0; --l) {
+            layer = nnet->layers[l];
+            deltas_hlayer<<<data->nCases, layer->nNeurons>>>(layer->d_outs,
+                                                             nnet->d_weights,
+                                                             layer->d_deltas,
+                                                             nextLayer->d_deltas,
+                                                             nextLayer->nNeurons,
+                                                             nextLayer->weightOffset,
+                                                             nextLayer->weightsPerNeuron);
+            nextLayer = layer;
+        }
+
+        // calculate derivatives of the error
+        MLPLayer *prevLayer = nnet->layers[0];
+        int nw;
+        for (int l = 1; l < nnet->nLayers; ++l) {
+            layer = nnet->layers[l];
+            nw = layer->nNeurons * layer->weightsPerNeuron;
+            derivs_layer<<<data->nCases, nw>>>(prevLayer->d_outs,
+                                               layer->d_deltas,
+                                               d_derivs,
+                                               layer->nNeurons,
+                                               prevLayer->nNeurons,
+                                               nnet->nWeights,
+                                               layer->weightsPerNeuron,
+                                               layer->weightOffset);
+            prevLayer = layer;
+        }
+
+        // update weights based on derivatives
+        update_weights_nreduc<<<1, nnet->nWeights>>>(nnet->d_weights, d_derivs,
+                                                     lrate, data->nCases,
+                                                     nnet->nWeights);
+    }
+
+    // cleanup
+    cudaFree(d_err);
+    cudaFree(d_derivs);
+}
 
 // ------------------------------------------------------------------------
 // --- utility functions --------------------------------------------------

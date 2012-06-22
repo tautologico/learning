@@ -33,8 +33,23 @@ struct MLPNetwork
     MLPLayer **layers;
     float    *d_weights;
     int      nWeights;
-    int      nCases;      // number of input cases stored on device
+    int      nCases;        // number of input cases stored on device
 };
+
+enum DataLocation { LOC_HOST, LOC_DEVICE, LOC_BOTH };
+
+struct DataSet
+{
+    int          nCases;        // number of cases
+    int          inputSize;     // size of input in each case
+    int          outputSize;    // size of output in each case
+    double       *inputs;       // inputs
+    double       *outputs;      // outputs
+    float        *d_inputs;     // inputs on device
+    float        *d_outputs;    // outputs on device
+    DataLocation location;      // where the data is available
+};
+
 
 // network functions
 MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer, int nCases);
@@ -45,5 +60,6 @@ void PresentInputs(MLPNetwork *nnet, float *inputs, int actf);
 void CopyNetworkOutputs(MLPNetwork *nnet, float *outs);
 float *GetLayerOutputs(MLPNetwork *nnet, int ixLayer);
 void PrintWeights(MLPNetwork *nnet);
+void BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs, float lrate);
 
 #endif                                                      /* __MLPNNETS_H */

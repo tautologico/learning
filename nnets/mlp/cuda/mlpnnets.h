@@ -43,8 +43,8 @@ struct DataSet
     int          nCases;        // number of cases
     int          inputSize;     // size of input in each case
     int          outputSize;    // size of output in each case
-    double       *inputs;       // inputs
-    double       *outputs;      // outputs
+    float        *inputs;       // inputs
+    float        *outputs;      // outputs
     float        *d_inputs;     // inputs on device
     float        *d_outputs;    // outputs on device
     DataLocation location;      // where the data is available

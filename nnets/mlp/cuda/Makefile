@@ -1,9 +1,15 @@
-all: xor_train
+all: xor_mlp
+
+xor_mlp: xor_mlp.o mlpnnets.o
+	nvcc -o xor_mlp xor_mlp.o mlpnnets.o -lcurand
+
+xor_mlp.o: xor_mlp.cu mlpnnets.h
+	nvcc -c xor_mlp.cu
 
 testfwd: testfwd.o mlpnnets.o
 	nvcc -o testfwd testfwd.o mlpnnets.o -lcurand
 
-testfwd.o: testfwd.cu
+testfwd.o: testfwd.cu mlpnnets.h
 	nvcc -c testfwd.cu
 
 xor_train.o: xor_train.cu
@@ -19,3 +25,4 @@ clean:
 	rm -f *.o
 	rm -f xor_train
 	rm -f testfwd
+	rm -f xor_mlp

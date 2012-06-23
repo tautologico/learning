@@ -60,6 +60,7 @@ void PresentInputs(MLPNetwork *nnet, float *inputs, int actf);
 void CopyNetworkOutputs(MLPNetwork *nnet, float *outs);
 float *GetLayerOutputs(MLPNetwork *nnet, int ixLayer);
 void PrintWeights(MLPNetwork *nnet);
-void BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs, float lrate);
+float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
+                         float lrate, int calcSSE, int printSSE);
 
 #endif                                                      /* __MLPNNETS_H */

@@ -354,16 +354,17 @@ __global__ void update_weights_nreduc(float *d_weights, float *d_derivs, float l
 void TransferDataSetToDevice(DataSet *data)
 {
     if (data->location == LOC_HOST) {
-        int nFloatsIn = data->nCases * data->inputSize;
+        //int nFloatsIn = data->nCases * data->inputSize;
         int nFloatsOut = data->nCases * data->outputSize;
 
         // allocate memory for dataset in device
-        data->d_inputs = allocateFloatsDev(nFloatsIn);
+        //data->d_inputs = allocateFloatsDev(nFloatsIn);
         data->d_outputs = allocateFloatsDev(nFloatsOut);
 
-        // copy dataset to device // TODO: check result of memcpy
-        cudaMemcpy(data->d_inputs, data->inputs,
-                   nFloatsIn * sizeof(float), cudaMemcpyHostToDevice);
+        // copy dataset to device (don't copy input, PresentInputs will copy)
+        // TODO: check result of memcpy
+        //cudaMemcpy(data->d_inputs, data->inputs,
+        //           nFloatsIn * sizeof(float), cudaMemcpyHostToDevice);
         cudaMemcpy(data->d_outputs, data->outputs,
                    nFloatsOut * sizeof(float), cudaMemcpyHostToDevice);
 
@@ -372,9 +373,10 @@ void TransferDataSetToDevice(DataSet *data)
     }
 }
 
-void BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs, float lrate)
+float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
+                         float lrate, int calcSSE, int printSSE)
 {
-    float *d_err;
+    float *err = NULL, *d_err;
     float *d_derivs;
     float sse = 0.0f;
     MLPLayer *outLayer = nnet->layers[nnet->nLayers - 1];
@@ -383,20 +385,48 @@ void BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs, float lrate
     TransferDataSetToDevice(data);
 
     // allocate space for errors
-    d_err = allocateFloatsDev(nOutputs);
+    d_err = allocateFloatsDev(nOutputs * data->nCases);
+
+    if (calcSSE) {
+        err = (float*) malloc(nOutputs * data->nCases * sizeof(float));
+        if (err == NULL) {
+            fprintf(stderr, "Couldn't allocate memory to store errors\n.");
+            exit(-1);
+        }
+    }
 
     // allocate memory for derivatives
     d_derivs = allocateFloatsDev(data->nCases * nnet->nWeights);
 
     for (int e = 0; e < epochs; ++e) {
         // forward propagation of all the cases
-        PresentInputs(nnet, data->d_inputs, ACTF_SIGMOID);
+        PresentInputs(nnet, data->inputs, ACTF_SIGMOID);
+        cudaThreadSynchronize();
 
+        // // print outputs (debug)
+        // float *outs = (float*) malloc(data->nCases * nOutputs * sizeof(float));
+        // CopyNetworkOutputs(nnet, outs);
+        // for (int i = 0; i < data->nCases * nOutputs; ++i)
+        //     printf("%5.3f ", outs[i]);
+        // printf("|| ");
+        // free(outs);
+        // // print outputs (debug end)
+        
         // backpropagation: calculation of deltas
         deltas_output<<<data->nCases, nOutputs>>>(outLayer->d_outs,
                                                   data->d_outputs,
                                                   outLayer->d_deltas,
                                                   d_err);
+
+        // // print deltas for output layer (debug)
+        // float *deltas = (float*) malloc(data->nCases * nOutputs * sizeof(float));
+        // cudaMemcpy(deltas, outLayer->d_deltas, data->nCases * nOutputs * sizeof(float), cudaMemcpyDeviceToHost);
+        // for (int i = 0; i < data->nCases * nOutputs; ++i)
+        //     printf("%5.3f ", deltas[i]);
+        // printf(" -- ");
+        // free(deltas);
+        // // (debug end)
+        
 
         MLPLayer *layer;
         MLPLayer *nextLayer = outLayer;
@@ -410,7 +440,29 @@ void BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs, float lrate
                                                              nextLayer->weightOffset,
                                                              nextLayer->weightsPerNeuron);
             nextLayer = layer;
+
+            // // print deltas for layer (debug)
+            // deltas = (float*) malloc(data->nCases * layer->nNeurons * sizeof(float));
+            // cudaMemcpy(deltas, layer->d_deltas, data->nCases * layer->nNeurons * sizeof(float), cudaMemcpyDeviceToHost);
+            // for (int i = 0; i < data->nCases * layer->nNeurons; ++i)
+            //     printf("%5.3f ", deltas[i]);
+            // printf(" -- ");
+            // free(deltas);
+            // // (debug end)           
         }
+        
+        // calculate SSE for this epoch
+	if (calcSSE) {
+	    sse = 0.0f;
+	    cudaMemcpy(err, d_err, data->nCases * nOutputs * sizeof(float), cudaMemcpyDeviceToHost);
+	    for (int i = 0; i < data->nCases * nOutputs; ++i) {
+		//printf("%6.3f ", err[i]);
+		sse += (err[i] * err[i]);
+	    }
+
+	    if (printSSE)
+		printf("- SSE = %5.3f\n", sse);
+	}
 
         // calculate derivatives of the error
         MLPLayer *prevLayer = nnet->layers[0];
@@ -435,9 +487,14 @@ void BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs, float lrate
                                                      nnet->nWeights);
     }
 
+    if (err != NULL)
+        free(err);
+    
     // cleanup
     cudaFree(d_err);
     cudaFree(d_derivs);
+
+    return sse;
 }
 
 // ------------------------------------------------------------------------
@@ -475,6 +532,8 @@ void PrintWeights(MLPNetwork *nnet)
         }
         printf("\n");        
     }
+
+    free(h_weights);
 }
 
 // return an array of floats with the outputs for layer with index ixLayer

@@ -41,7 +41,7 @@ MLPNetwork *xornn;
 int main(int argc, char **argv)
 {
     // create network
-    xornn = CreateNetwork(3, neuronsPerLayer, ncases);
+    xornn = CreateNetwork(3, neuronsPerLayer);
 
     if (xornn == NULL) {
         fprintf(stderr, "Error creating XOR network\n");
@@ -59,7 +59,12 @@ int main(int argc, char **argv)
     
     // present inputs and do forward propagation
     printf("* Calculating outputs for input cases\n");
-    PresentInputs(xornn, inputs, ACTF_THRESHOLD);
+    if (!PrepareForTesting(xornn, ncases)) {
+        fprintf(stderr, "! Could not allocate memory for outputs on device\n");
+        return -1;
+    }
+        
+    PresentInputsFromHost(xornn, inputs, ACTF_THRESHOLD);
 
     float *outs;
     for (int i = 0; i < 3; ++i) {

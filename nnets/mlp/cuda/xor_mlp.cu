@@ -44,7 +44,7 @@ DataSet *trainData;
 int main(int argc, char **argv)
 {
     // create network
-    xornn = CreateNetwork(3, neuronsPerLayer, ncases);
+    xornn = CreateNetwork(3, neuronsPerLayer);
 
     if (xornn == NULL) {
         fprintf(stderr, "Error creating XOR network\n");
@@ -75,7 +75,7 @@ int main(int argc, char **argv)
     trainData->location = LOC_HOST;
 
     // train the network
-    int epochs = 8000;
+    int epochs = 6000;
     printf("* Training network by backpropagation with %d epochs\n", epochs);
     float sse;
     sse = BatchTrainBackprop(xornn, trainData, epochs, 0.75f, 1, 0);
@@ -85,9 +85,9 @@ int main(int argc, char **argv)
     printf("* Weights for network after training:\n# ");
     PrintWeights(xornn);
     
-    // test trained networks with known inputs
+    // test trained networks with known inputs (assume outputs are already allocated)
     printf("* Calculating outputs for input cases\n");
-    PresentInputs(xornn, inputs, ACTF_SIGMOID);
+    PresentInputsFromHost(xornn, inputs, ACTF_SIGMOID);
 
     // // print outputs per layer (debug)
     // float *outs;

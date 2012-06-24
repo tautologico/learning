@@ -87,7 +87,68 @@ void DestroyLayer(MLPLayer *layer)
     free(layer);
 }
 
-MLPLayer *CreateLayer(int nNeurons, int nNeuronsPrev, int wOffset, int nCases)
+// free all memory on device reserved for deltas, on all layers
+void FreeDeltas(MLPNetwork *nnet)
+{
+    for (int i = 0; i < nnet->nLayers; ++i) {
+        if (nnet->layers[i]->d_deltas != NULL) {
+            cudaFree(nnet->layers[i]->d_deltas);
+            nnet->layers[i]->d_deltas = NULL;
+        }
+    }
+}
+
+void FreeOutputs(MLPNetwork *nnet)
+{
+    for (int i = 0; i < nnet->nLayers; ++i) {
+        if (nnet->layers[i]->d_outs != NULL) {
+            cudaFree(nnet->layers[i]->d_outs);
+            nnet->layers[i]->d_outs = NULL;
+        }
+    }    
+}
+
+// allocates memory on device for outputs on all layers
+// assumes the number of cases is already net on the nnet object
+bool ReallocateOutputs(MLPNetwork *nnet)
+{
+    // free outputs if already allocated
+    FreeOutputs(nnet);
+
+    // allocate memory for outputs
+    for (int i = 0; i < nnet->nLayers; ++i) {
+        nnet->layers[i]->d_outs =
+            allocateFloatsDev(nnet->layers[i]->nNeurons * nnet->nCases);
+        if (nnet->layers[i]->d_outs == NULL) {
+            FreeOutputs(nnet);
+            return false;
+        }                
+    }
+
+    return true;
+}
+
+// allocates memory on device for the deltas on all layers
+// assumes the number of cases is already set on the nnet object
+bool ReallocateDeltas(MLPNetwork *nnet)
+{
+    // free deltas if already allocated
+    FreeDeltas(nnet);
+
+    // allocate memory for deltas, except for input layer
+    for (int i = 1; i < nnet->nLayers; ++i) {
+        nnet->layers[i]->d_deltas =
+            allocateFloatsDev(nnet->layers[i]->nNeurons * nnet->nCases);
+        if (nnet->layers[i]->d_deltas == NULL) {
+            FreeDeltas(nnet);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+MLPLayer *CreateLayer(int nNeurons, int nNeuronsPrev, int wOffset)
 {
     MLPLayer *result = (MLPLayer*) calloc(1, sizeof(MLPLayer));
 
@@ -96,21 +157,9 @@ MLPLayer *CreateLayer(int nNeurons, int nNeuronsPrev, int wOffset, int nCases)
 
     result->nNeurons = nNeurons;
 
-    // allocate outputs and deltas on device
-    result->d_outs = allocateFloatsDev(nNeurons * nCases);
-
-    if (result->d_outs == NULL) {
-        DestroyLayer(result);
-        return NULL;
-    }
-
-    // TODO: deltas allocated per case?
-    result->d_deltas = allocateFloatsDev(nNeurons * nCases);
-
-    if (result->d_deltas == NULL) {
-        DestroyLayer(result);
-        return NULL;
-    }
+    // mark outputs and deltas as not allocated
+    result->d_outs = NULL;
+    result->d_deltas = NULL;
 
     result->weightsPerNeuron = nNeuronsPrev + 1;
     result->weightOffset = wOffset;
@@ -122,8 +171,7 @@ MLPLayer *CreateLayer(int nNeurons, int nNeuronsPrev, int wOffset, int nCases)
 // nLayers: number of layers
 // neuronsPerLayer: array of ints (size equal to nLayers) with the
 //                  number of neurons for each layer
-// nCases: Number of input cases to process in parallel
-MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer, int nCases)
+MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer)
 {
     MLPNetwork *result;
 
@@ -132,7 +180,8 @@ MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer, int nCases)
     if (result == NULL)
         return NULL;
 
-    result->nCases = nCases;
+    // network is not initially prepared to store outputs, so zero input cases
+    result->nCases = 0;
     
     result->nLayers = nLayers;
     result->layers = (MLPLayer**) calloc(nLayers, sizeof(MLPLayer*));
@@ -143,7 +192,7 @@ MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer, int nCases)
     }
 
     // create input layer
-    result->layers[0] = CreateLayer(neuronsPerLayer[0], 0, 0, nCases);
+    result->layers[0] = CreateLayer(neuronsPerLayer[0], 0, 0);
     if (result->layers[0] == NULL) {
         DestroyNetwork(result);
         return NULL;
@@ -153,7 +202,7 @@ MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer, int nCases)
     int nwTotal = 0;
     int nwPrev = neuronsPerLayer[0];        
     for (int i = 1; i < nLayers; ++i) {
-        result->layers[i] = CreateLayer(neuronsPerLayer[i], nwPrev, nwTotal, nCases);
+        result->layers[i] = CreateLayer(neuronsPerLayer[i], nwPrev, nwTotal);
         if (result->layers[i] == NULL) {
             DestroyNetwork(result);
             return NULL;
@@ -244,11 +293,11 @@ __global__ void forward_layer_threshold(float *d_weights, int weightOffset,
 // present a vector of input cases to the network nnet and do forward propagation.
 // inputs is assumed to be in host memory, and of size equal to N * nnet->nCases,
 // where N is the number of inputs to the network
-void PresentInputs(MLPNetwork *nnet, float *inputs, int actf)
+void PresentInputsFromHost(MLPNetwork *nnet, float *inputs, int actf)
 {
     int nInputs = nnet->layers[0]->nNeurons;
 
-    // copy inputs to layer 0 on network
+    // copy inputs to layer 0 on network // TODO: support specifying a buffer already on device, avoid copy
     cudaMemcpy(nnet->layers[0]->d_outs, inputs,
                nInputs * nnet->nCases * sizeof(float),
                cudaMemcpyHostToDevice);
@@ -274,6 +323,45 @@ void PresentInputs(MLPNetwork *nnet, float *inputs, int actf)
     
 }
 
+// present a vector of input cases to the network nnet and do forward propagation.
+// d_inputs is assumed to be in device memory, and of size equal to N * nnet->nCases,
+// where N is the number of inputs to the network
+void PresentInputs(MLPNetwork *nnet, float *d_inputs, int actf)
+{
+    // TODO: if d_outs is already allocated for this layer, it will leak
+    nnet->layers[0]->d_outs = d_inputs;
+
+    int nn;
+    for (int l = 1; l < nnet->nLayers; ++l) {
+        nn = nnet->layers[l]->nNeurons;
+        if (actf == ACTF_THRESHOLD)
+            forward_layer_threshold<<<nnet->nCases, nn>>>(nnet->d_weights,
+                                                nnet->layers[l]->weightOffset,
+                                                nnet->layers[l]->weightsPerNeuron,
+                                                nnet->layers[l-1]->d_outs,
+                                                nnet->layers[l-1]->nNeurons,
+                                                nnet->layers[l]->d_outs);
+        else
+            forward_layer<<<nnet->nCases, nn>>>(nnet->d_weights,
+                                                nnet->layers[l]->weightOffset,
+                                                nnet->layers[l]->weightsPerNeuron,
+                                                nnet->layers[l-1]->d_outs,
+                                                nnet->layers[l-1]->nNeurons,
+                                                nnet->layers[l]->d_outs);
+    }
+    
+}
+
+bool PrepareForTesting(MLPNetwork *nnet, int nCases)
+{
+    if (nnet->nCases != nCases) {
+        nnet->nCases = nCases;
+        return ReallocateOutputs(nnet);
+    }
+
+    // no need to reallocate outputs
+    return true;
+}
 
 // ------------------------------------------------------------------------
 // --- backpropagation ----------------------------------------------------
@@ -354,23 +442,39 @@ __global__ void update_weights_nreduc(float *d_weights, float *d_derivs, float l
 void TransferDataSetToDevice(DataSet *data)
 {
     if (data->location == LOC_HOST) {
-        //int nFloatsIn = data->nCases * data->inputSize;
+        int nFloatsIn = data->nCases * data->inputSize;
         int nFloatsOut = data->nCases * data->outputSize;
 
         // allocate memory for dataset in device
-        //data->d_inputs = allocateFloatsDev(nFloatsIn);
+        data->d_inputs = allocateFloatsDev(nFloatsIn);
         data->d_outputs = allocateFloatsDev(nFloatsOut);
 
-        // copy dataset to device (don't copy input, PresentInputs will copy)
+        // copy dataset to device
         // TODO: check result of memcpy
-        //cudaMemcpy(data->d_inputs, data->inputs,
-        //           nFloatsIn * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(data->d_inputs, data->inputs,
+                   nFloatsIn * sizeof(float), cudaMemcpyHostToDevice);
         cudaMemcpy(data->d_outputs, data->outputs,
                    nFloatsOut * sizeof(float), cudaMemcpyHostToDevice);
 
         // change location specifier
         data->location = LOC_BOTH;
     }
+}
+
+bool PrepareForTraining(MLPNetwork *nnet, DataSet *trainData)
+{
+    if (trainData->nCases != nnet->nCases) {
+        nnet->nCases = trainData->nCases;
+        if (!ReallocateOutputs(nnet))
+            return false;
+
+        if (!ReallocateDeltas(nnet)) {
+            FreeOutputs(nnet);
+            return false;
+        }
+    }
+
+    return true;
 }
 
 float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
@@ -382,8 +486,11 @@ float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
     MLPLayer *outLayer = nnet->layers[nnet->nLayers - 1];
     int nOutputs = outLayer->nNeurons;
 
+    if (!PrepareForTraining(nnet, data))
+        return -1.0f;
+    
     TransferDataSetToDevice(data);
-
+    
     // allocate space for errors
     d_err = allocateFloatsDev(nOutputs * data->nCases);
 
@@ -397,12 +504,12 @@ float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
 
     // allocate memory for derivatives
     d_derivs = allocateFloatsDev(data->nCases * nnet->nWeights);
-
-    for (int e = 0; e < epochs; ++e) {
+    
+    for (int e = 0; e < epochs; ++e) {        
         // forward propagation of all the cases
-        PresentInputs(nnet, data->inputs, ACTF_SIGMOID);
-        cudaThreadSynchronize();
-
+        PresentInputs(nnet, data->d_inputs, ACTF_SIGMOID);
+        //cudaThreadSynchronize();
+        
         // // print outputs (debug)
         // float *outs = (float*) malloc(data->nCases * nOutputs * sizeof(float));
         // CopyNetworkOutputs(nnet, outs);
@@ -486,13 +593,15 @@ float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
                                                      lrate, data->nCases,
                                                      nnet->nWeights);
     }
-
+    
     if (err != NULL)
         free(err);
     
     // cleanup
     cudaFree(d_err);
     cudaFree(d_derivs);
+
+    // TODO: free the deltas?
 
     return sse;
 }

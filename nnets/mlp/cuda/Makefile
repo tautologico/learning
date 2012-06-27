@@ -1,5 +1,11 @@
 all: xor_mlp
 
+iris: iris.o mlpnnets.o
+	nvcc -o iris iris.o mlpnnets.o -lcurand
+
+iris.o: iris.cu mlpnnets.h
+	nvcc -c iris.cu
+
 xor_mlp: xor_mlp.o mlpnnets.o
 	nvcc -o xor_mlp xor_mlp.o mlpnnets.o -lcurand
 

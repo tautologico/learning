@@ -362,6 +362,7 @@ void allocate_dataset_arrays(DataSet *dset)
 {
     int i;
 
+    // TODO: verify allocation results
     dset->input = (double**) malloc(sizeof(double*) * dset->n_cases);
     dset->output = (double**) malloc(sizeof(double*) * dset->n_cases);
 
@@ -385,12 +386,12 @@ void free_arrayarray(double **array, int rows)
 void free_dataset(DataSet *dset)
 {
     if (dset->input != NULL) {
-        free_arrayarray(dset->input);
+        free_arrayarray(dset->input, dset->n_cases);
         free(dset->input);
     }
 
     if (dset->output != NULL) {
-        free_arrayarray(dset->output);
+        free_arrayarray(dset->output, dset->n_cases);
         free(dset->output);
     }
 

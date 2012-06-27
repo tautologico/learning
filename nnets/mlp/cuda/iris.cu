@@ -16,10 +16,16 @@
 
 #define SEED                  631814ULL
 
+#define MAX_ABS               1.2f
+
 #define EPOCHS                7000
-#define LEARNING_RATE         0.003
+#define LEARNING_RATE         0.003f
 
 #define MAX(a, b)             (a >= b? a : b)
+
+// neurons per layer (4 inputs, 8 hidden, 3 outputs)
+int neuronsPerLayer[] = { 4, 8, 3 };
+
 
 bool AllocateDataSetArrays(DataSet *data)
 {
@@ -37,6 +43,26 @@ bool AllocateDataSetArrays(DataSet *data)
 
     return true;
 }
+
+void FreeDataSet(DataSet *data)
+{
+    if (data != NULL) {
+        if (data->inputs != NULL)
+            free(data->inputs);
+
+        if (data->outputs != NULL)
+            free(data->outputs);
+
+        if (data->d_inputs != NULL)
+            cudaFree(data->d_inputs);
+
+        if (data->d_outputs != NULL)
+            cudaFree(data->d_outputs);
+
+        free(data);
+    }
+}
+
 
 typedef enum tagClass {
     iris_setosa,
@@ -140,7 +166,7 @@ void print_dataset(DataSet *dset)
     }
 }
 
-Class output_to_class(double *output)
+Class output_to_class(float *output)
 {
     double max;
 
@@ -151,12 +177,6 @@ Class output_to_class(double *output)
         return iris_versicolor;
 
     return iris_virginica;
-}
-
-Class predict_class(MLPNetwork *nnet, double *input)
-{
-    //forward_prop(nnet, sigmoid, input);
-    return iris_virginica; // TODO: fix
 }
 
 
@@ -190,7 +210,7 @@ int main(int argc, char **argv)
     int     errors;
     DataSet *train_set;
     DataSet *test_set;
-    double  e;
+    float   e;
     double  acc;
     Class   predicted, desired;
 
@@ -204,38 +224,69 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    print_dataset(train_set);
+    irisnn = CreateNetwork(3, neuronsPerLayer);
+    RandomWeights(irisnn, MAX_ABS, SEED);
 
-    // printf("Training network with %d epochs...\n", EPOCHS);
-    // e = batch_train(irisnn, train_set, LEARNING_RATE, EPOCHS,
-    //                 sigmoid, dsigmoid);
-    // printf("Training finished, approximate final SSE: %f\n", e);
+    printf("Training network with %d epochs...\n", EPOCHS);
+    e = BatchTrainBackprop(irisnn, train_set, EPOCHS, LEARNING_RATE, 1, 0);
+    printf("Training finished, approximate final SSE: %f\n", e);
 
-    // print_network_structure(irisnn);
+    printf("Weights after training:\n");
+    PrintWeights(irisnn);
 
-    // // testing
-    // test_set = read_dataset("iris.test");
+    printf("-----------------------------------------\n");
 
-    // if (test_set == NULL) {
-    //     fprintf(stderr, "Error reading test set\n");
-    //     exit(1);
-    // }
+    // free the training dataset
+    FreeDataSet(train_set);
 
-    // errors = 0;
-    // printf("Testing with %d cases...\n", test_set->n_cases);
-    // for (i = 0; i < test_set->n_cases; ++i) {
-    //     predicted = predict_class(irisnn, test_set->input[i]);
-    //     desired = output_to_class(test_set->output[i]);
-    //     if (predicted != desired)
-    //         ++errors;
-    //     printf("Case %d | predicted: %s, desired: %s, outputs: %4.3f %4.3f %4.3f\n", i,
-    //            class_to_string(predicted), class_to_string(desired),
-    //            irisnn->output_layer->y[0], irisnn->output_layer->y[1], irisnn->output_layer->y[2]);
-    // }
+    // testing
+    test_set = read_dataset("iris.test");
 
-    // acc = 100.0 - (100.0 * errors / test_set->n_cases);
-    // printf("Testing accuracy: %f\n", acc);
-    // printf("Total classificarion errors: %d\n", errors);
+    if (test_set == NULL) {
+        fprintf(stderr, "Error reading test set\n");
+        return -1;
+    }
+
+    errors = 0;
+
+    if (!PrepareForTesting(irisnn, test_set->nCases)) {
+        fprintf(stderr, "Error preparing network for testing\n");
+        return -1;
+    }
+
+    printf("Testing with %d cases...\n", test_set->nCases);
+    PresentInputsFromDataSet(irisnn, test_set, ACTF_SIGMOID);
+
+    cudaThreadSynchronize();
+
+    float *output = (float*) malloc(sizeof(float) * test_set->nCases * test_set->outputSize);
+
+    if (output == NULL) {
+        fprintf(stderr, "Could not allocate memory for copying output to host\n");
+        return -1;
+    }
+
+    CopyNetworkOutputs(irisnn, output);
+
+    for (i = 0; i < test_set->nCases; ++i) {
+        predicted = output_to_class(output + (i * test_set->outputSize));
+        desired = output_to_class(test_set->outputs + (i * test_set->outputSize));
+        if (predicted != desired)
+            ++errors;
+        printf("Case %d | predicted: %s, desired: %s, outputs: %4.3f %4.3f %4.3f\n", i,
+               class_to_string(predicted), class_to_string(desired),
+               output[i*test_set->outputSize], output[i*test_set->outputSize+1], 
+               output[i*test_set->outputSize+2]);
+    }
+
+    free(output);
+
+    acc = 100.0 - (100.0 * errors / test_set->nCases);
+    printf("Testing accuracy: %f\n", acc);
+    printf("Total classificarion errors: %d\n", errors);
+
+    DestroyNetwork(irisnn);
+    FreeDataSet(test_set);
 
     return 0;
 }

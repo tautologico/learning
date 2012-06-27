@@ -56,7 +56,7 @@ MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer);
 void DestroyNetwork(MLPNetwork *net);
 void RandomWeights(MLPNetwork *net, float max_abs, long seed);
 void RandomWeightsGen(MLPNetwork *net, float max_abs, curandGenerator_t gen);
-void PresentInputsFromHost(MLPNetwork *nnet, float *inputs, int actf);
+void PresentInputsFromDataSet(MLPNetwork *nnet, DataSet *dset, int actf);
 void PresentInputs(MLPNetwork *nnet, float *d_inputs, int actf);
 bool PrepareForTesting(MLPNetwork *nnet, int nCases);
 void CopyNetworkOutputs(MLPNetwork *nnet, float *outs);

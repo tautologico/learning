@@ -220,5 +220,10 @@ int main(int argc, char **argv)
     printf("Testing accuracy: %f\n", acc);
     printf("Total classificarion errors: %d\n", errors);
 
+    // cleanup
+    free_dataset(train_set);
+    free_dataset(test_set);
+    destroy_network(irisnn);
+
     return 0;
 }

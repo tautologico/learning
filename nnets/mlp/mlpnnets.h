@@ -57,5 +57,6 @@ void forward_prop(Network *nnet, double (*activf)(double), double *input);
 double batch_train(Network *nnet, DataSet *dset, double lrate, int epochs,
                    double (*actf)(double), double (*dactf)(double));
 void allocate_dataset_arrays(DataSet *dset);
+void free_dataset(DataSet *dset);
 
 #endif                                    /* __MLPNETS_H */

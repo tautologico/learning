@@ -370,3 +370,29 @@ void allocate_dataset_arrays(DataSet *dset)
         dset->output[i] = (double*) malloc(sizeof(double) * dset->output_size);
     }
 }
+
+// free the double arrays in an array of arrays
+void free_arrayarray(double **array, int rows)
+{
+    int i;
+
+    for (i = 0; i < rows; ++i)
+        if (array[i] != NULL)
+            free(array[i]);
+}
+
+// free the memory occupied by a dataset
+void free_dataset(DataSet *dset)
+{
+    if (dset->input != NULL) {
+        free_arrayarray(dset->input);
+        free(dset->input);
+    }
+
+    if (dset->output != NULL) {
+        free_arrayarray(dset->output);
+        free(dset->output);
+    }
+
+    free(dset);
+}

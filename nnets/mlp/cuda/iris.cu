@@ -41,23 +41,33 @@ bool AllocateDataSetArrays(DataSet *data)
         return false;
     }
 
+    data->location = LOC_HOST;
+    
     return true;
 }
 
 void FreeDataSet(DataSet *data)
 {
     if (data != NULL) {
-        if (data->inputs != NULL)
+        if (data->inputs != NULL) {
             free(data->inputs);
+            data->inputs = NULL;
+        }
 
-        if (data->outputs != NULL)
+        if (data->outputs != NULL) {
             free(data->outputs);
+            data->outputs = NULL;
+        }
 
-        if (data->d_inputs != NULL)
+        if (data->d_inputs != NULL) {
             cudaFree(data->d_inputs);
+            data->d_inputs = NULL;
+        }
 
-        if (data->d_outputs != NULL)
+        if (data->d_outputs != NULL) {
             cudaFree(data->d_outputs);
+            data->d_outputs = NULL;
+        }
 
         free(data);
     }
@@ -108,6 +118,8 @@ DataSet* read_dataset(char *filename)
     dset->nCases = i;
     dset->inputSize = 4;
     dset->outputSize = 3;
+    dset->d_inputs = NULL;
+    dset->d_outputs = NULL;
     if (!AllocateDataSetArrays(dset)) {
         fprintf(stderr, "Could not allocate memory for dataset data\n");
         free(dset);
@@ -204,6 +216,14 @@ char *class_to_string(Class c)
     return res;
 }
 
+void print_network_data(MLPNetwork *net)
+{
+    printf("nLayers = %d, d_weights = %d, nWeights = %d, nCases = %d\n",
+           net->nLayers, net->d_weights, net->nWeights, net->nCases);
+    printf("output ptr for first layer: %d\n", net->layers[0]->d_outs);
+    printf("output ptr for last layer: %d\n", net->layers[net->nLayers-1]->d_outs);
+}
+
 int main(int argc, char **argv)
 {
     int     i;
@@ -237,6 +257,7 @@ int main(int argc, char **argv)
     printf("-----------------------------------------\n");
 
     // free the training dataset
+    cudaThreadSynchronize();
     FreeDataSet(train_set);
 
     // testing
@@ -259,6 +280,9 @@ int main(int argc, char **argv)
 
     cudaThreadSynchronize();
 
+    printf("Weights again:\n");
+    PrintWeights(irisnn);    
+
     float *output = (float*) malloc(sizeof(float) * test_set->nCases * test_set->outputSize);
 
     if (output == NULL) {
@@ -266,7 +290,10 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    CopyNetworkOutputs(irisnn, output);
+    if (!CopyNetworkOutputs(irisnn, output)) {
+        fprintf(stderr, "Could not get device outputs\n");
+        return -1;
+    }
 
     for (i = 0; i < test_set->nCases; ++i) {
         predicted = output_to_class(output + (i * test_set->outputSize));

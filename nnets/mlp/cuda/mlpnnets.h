@@ -59,10 +59,15 @@ void RandomWeightsGen(MLPNetwork *net, float max_abs, curandGenerator_t gen);
 void PresentInputsFromDataSet(MLPNetwork *nnet, DataSet *dset, int actf);
 void PresentInputs(MLPNetwork *nnet, float *d_inputs, int actf);
 bool PrepareForTesting(MLPNetwork *nnet, int nCases);
-void CopyNetworkOutputs(MLPNetwork *nnet, float *outs);
+bool CopyNetworkOutputs(MLPNetwork *nnet, float *outs);
 float *GetLayerOutputs(MLPNetwork *nnet, int ixLayer);
 void PrintWeights(MLPNetwork *nnet);
 float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
                          float lrate, int calcSSE, int printSSE);
+
+// dataset functions
+DataSet* CreateDataSet(int nCases, int inputSize, int outputSize);
+void DestroyDataSet(DataSet *dset);
+
 
 #endif                                                      /* __MLPNNETS_H */

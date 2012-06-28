@@ -78,11 +78,15 @@ void RandomWeightsGen(MLPNetwork *net, float max_abs, curandGenerator_t gen)
 // --- network construction and management --------------------------------
 void DestroyLayer(MLPLayer *layer)
 {
-    if (layer->d_outs != NULL)
+    if (layer->d_outs != NULL) {
         cudaFree(layer->d_outs);
+        layer->d_outs = NULL;
+    }
 
-    if (layer->d_deltas != NULL)
+    if (layer->d_deltas != NULL) {
         cudaFree(layer->d_deltas);
+        layer->d_deltas = NULL;
+    }
 
     free(layer);
 }
@@ -90,7 +94,7 @@ void DestroyLayer(MLPLayer *layer)
 // free all memory on device reserved for deltas, on all layers
 void FreeDeltas(MLPNetwork *nnet)
 {
-    for (int i = 0; i < nnet->nLayers; ++i) {
+    for (int i = 1; i < nnet->nLayers; ++i) {
         if (nnet->layers[i]->d_deltas != NULL) {
             cudaFree(nnet->layers[i]->d_deltas);
             nnet->layers[i]->d_deltas = NULL;
@@ -226,8 +230,10 @@ MLPNetwork *CreateNetwork(int nLayers, int *neuronsPerLayer)
 
 void DestroyNetwork(MLPNetwork *net)
 {
-    if (net->d_weights != NULL)
+    if (net->d_weights != NULL) {
         cudaFree(net->d_weights);
+        net->d_weights = NULL;
+    }
 
     if (net->layers != NULL) {
         for (int i = 0; i < net->nLayers; ++i)
@@ -235,31 +241,126 @@ void DestroyNetwork(MLPNetwork *net)
                 DestroyLayer(net->layers[i]);
 
         free(net->layers);
+        net->layers = NULL;
     }
 
     free(net);
 }
 
-void TransferDataSetToDevice(DataSet *data)
+DataSet* CreateDataSet(int nCases, int inputSize, int outputSize)
 {
+    DataSet *result;
+
+    result = (DataSet*) malloc(sizeof(DataSet));
+
+    if (result == NULL)
+        return NULL;
+
+    result->nCases = nCases;
+    result->inputSize = inputSize;
+    result->outputSize = outputSize;
+
+    result->inputs = (float*) malloc(sizeof(float) * nCases * inputSize);
+
+    if (result->inputs == NULL) {
+        free(result);
+        return NULL;
+    }
+
+    result->outputs = (float*) malloc(sizeof(float) * nCases * outputSize);
+
+    if (result->outputs == NULL) {
+        free(result->inputs);
+        free(result);
+        return NULL;
+    }
+
+    result->location = LOC_HOST;
+    result->d_inputs = NULL;
+    result->d_outputs = NULL;
+
+    return result;
+}
+
+void DestroyDataSet(DataSet *dset)
+{
+    if (dset->inputs != NULL) {
+        free(dset->inputs);
+        dset->inputs = NULL;
+    }
+
+    if (dset->outputs != NULL) {
+        free(dset->outputs);
+        dset->outputs = NULL;
+    }
+
+    if (dset->location == LOC_HOST) {
+        if (dset->d_inputs != NULL || dset->d_outputs != NULL) {
+            fprintf(stderr, "Location of dataset is HOST but device ptrs are not NULL\n");
+            exit(-1);
+        }
+    }
+    else {
+        if (dset->d_inputs != NULL) {
+            cudaFree(dset->d_inputs);
+            dset->d_inputs = NULL;
+        }
+
+        if (dset->d_outputs != NULL) {
+            cudaFree(dset->d_outputs);
+            dset->d_outputs = NULL;
+        }
+    }
+
+    free(dset);
+}
+
+bool TransferDataSetToDevice(DataSet *data)
+{
+    cudaError_t e;
+    
     if (data->location == LOC_HOST) {
         int nFloatsIn = data->nCases * data->inputSize;
         int nFloatsOut = data->nCases * data->outputSize;
 
         // allocate memory for dataset in device
         data->d_inputs = allocateFloatsDev(nFloatsIn);
+
+        if (data->d_inputs == NULL) 
+            return false;
+
         data->d_outputs = allocateFloatsDev(nFloatsOut);
 
-        // copy dataset to device
-        // TODO: check result of memcpy
-        cudaMemcpy(data->d_inputs, data->inputs,
-                   nFloatsIn * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(data->d_outputs, data->outputs,
-                   nFloatsOut * sizeof(float), cudaMemcpyHostToDevice);
+        if (data->d_outputs == NULL) {
+            cudaFree(data->d_inputs);
+            data->d_inputs = NULL;
+            return false;
+        }
 
+        // copy dataset to device
+        e = cudaMemcpy(data->d_inputs, data->inputs,
+                       nFloatsIn * sizeof(float), cudaMemcpyHostToDevice);
+
+        if (e != cudaSuccess) {
+            fprintf(stderr, "Error copying dataset inputs from host to device: %s\n",
+                    cudaGetErrorString(e));
+            return false;
+        }
+        
+        e = cudaMemcpy(data->d_outputs, data->outputs,
+                       nFloatsOut * sizeof(float), cudaMemcpyHostToDevice);
+
+        if (e != cudaSuccess) {
+            fprintf(stderr, "Error copying dataset outputs from host to device: %s\n",
+                    cudaGetErrorString(e));
+            return false;
+        }
+        
         // change location specifier
         data->location = LOC_BOTH;
     }
+
+    return true;
 }
 
 
@@ -314,42 +415,15 @@ __global__ void forward_layer_threshold(float *d_weights, int weightOffset,
 }
 
 // present a vector of input cases to the network nnet and do forward propagation.
-// inputs is assumed to be in host memory, and of size equal to N * nnet->nCases,
-// where N is the number of inputs to the network
-void PresentInputsFromHost(MLPNetwork *nnet, float *inputs, int actf)
-{
-    int nInputs = nnet->layers[0]->nNeurons;
-
-    // copy inputs to layer 0 on network // TODO: outputs for layer 0 are no longer allocated
-    cudaMemcpy(nnet->layers[0]->d_outs, inputs,
-               nInputs * nnet->nCases * sizeof(float),
-               cudaMemcpyHostToDevice);
-
-    int nn;
-    for (int l = 1; l < nnet->nLayers; ++l) {
-        nn = nnet->layers[l]->nNeurons;
-        if (actf == ACTF_THRESHOLD)
-            forward_layer_threshold<<<nnet->nCases, nn>>>(nnet->d_weights,
-                                                nnet->layers[l]->weightOffset,
-                                                nnet->layers[l]->weightsPerNeuron,
-                                                nnet->layers[l-1]->d_outs,
-                                                nnet->layers[l-1]->nNeurons,
-                                                nnet->layers[l]->d_outs);
-        else
-            forward_layer<<<nnet->nCases, nn>>>(nnet->d_weights,
-                                                nnet->layers[l]->weightOffset,
-                                                nnet->layers[l]->weightsPerNeuron,
-                                                nnet->layers[l-1]->d_outs,
-                                                nnet->layers[l-1]->nNeurons,
-                                                nnet->layers[l]->d_outs);
-    }
-    
-}
-
+// the dataset is assumed to contain a number of cases equal to
+// the nCases in the network
 void PresentInputsFromDataSet(MLPNetwork *nnet, DataSet *dset, int actf)
 {
     // transfer data to device (if it's not already there)
-    TransferDataSetToDevice(dset);
+    if (!TransferDataSetToDevice(dset)) {
+        fprintf(stderr, "Could not transfer data set to device\n");
+        return;
+    }
 
     // do forward propagation
     PresentInputs(nnet, dset->d_inputs, actf);
@@ -360,7 +434,6 @@ void PresentInputsFromDataSet(MLPNetwork *nnet, DataSet *dset, int actf)
 // where N is the number of inputs to the network
 void PresentInputs(MLPNetwork *nnet, float *d_inputs, int actf)
 {
-    // TODO: verify if memory will leak here
     nnet->layers[0]->d_outs = d_inputs;
 
     int nn;
@@ -490,7 +563,7 @@ bool PrepareForTraining(MLPNetwork *nnet, DataSet *trainData)
 float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
                          float lrate, int calcSSE, int printSSE)
 {
-    float *err = NULL, *d_err;
+    float *err = NULL, *d_err = NULL;
     float *d_derivs;
     float sse = 0.0f;
     MLPLayer *outLayer = nnet->layers[nnet->nLayers - 1];
@@ -499,11 +572,18 @@ float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
     if (!PrepareForTraining(nnet, data))
         return -1.0f;
     
-    TransferDataSetToDevice(data);
+    if (!TransferDataSetToDevice(data))
+        return -1.0f;
     
     // allocate space for errors
     d_err = allocateFloatsDev(nOutputs * data->nCases);
 
+    if (d_err == NULL) {
+        fprintf(stderr, "Error allocating memory on device to store errors: %s\n",
+                cudaGetErrorString(cudaGetLastError()));
+        exit(-1);
+    }
+    
     if (calcSSE) {
         err = (float*) malloc(nOutputs * data->nCases * sizeof(float));
         if (err == NULL) {
@@ -543,7 +623,7 @@ float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
         // printf(" -- ");
         // free(deltas);
         // // (debug end)
-        
+            
 
         MLPLayer *layer;
         MLPLayer *nextLayer = outLayer;
@@ -610,8 +690,7 @@ float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
     // cleanup
     cudaFree(d_err);
     cudaFree(d_derivs);
-
-    // TODO: free the deltas?
+    FreeDeltas(nnet);
 
     cudaThreadSynchronize();
     return sse;
@@ -624,13 +703,23 @@ float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
 // Copy the outputs for network nnet, stored in device memory, to
 // host memory pointed to by outs. outs must have size equal to N * nnet->nCases,
 // where N is the number of output neurons in the network
-void CopyNetworkOutputs(MLPNetwork *nnet, float *outs)
+bool CopyNetworkOutputs(MLPNetwork *nnet, float *outs)
 {
+    cudaError_t e;
+    
     MLPLayer *last = nnet->layers[nnet->nLayers-1];
     
-    cudaMemcpy(outs, last->d_outs,
-               last->nNeurons * nnet->nCases * sizeof(float),
-               cudaMemcpyDeviceToHost);
+    e = cudaMemcpy(outs, last->d_outs,
+                   last->nNeurons * nnet->nCases * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+    if (e != cudaSuccess) {
+        fprintf(stderr, "Error copying outputs from device to host: %s\n",
+                cudaGetErrorString(e));
+        return false;
+    }
+
+    return true;
 }
 
 void PrintWeights(MLPNetwork *nnet)
@@ -648,7 +737,7 @@ void PrintWeights(MLPNetwork *nnet)
                        cudaMemcpyDeviceToHost);
 
         if (e != cudaSuccess) {
-            fprintf(stderr, "Error copying weights from host to device: %s\n", 
+            fprintf(stderr, "Error copying weights from device to host: %s\n", 
                     cudaGetErrorString(e));
         }
         

@@ -87,7 +87,7 @@ int main(int argc, char **argv)
     
     // test trained networks with known inputs (assume outputs are already allocated)
     printf("* Calculating outputs for input cases\n");
-    PresentInputsFromHost(xornn, inputs, ACTF_SIGMOID);
+    PresentInputsFromDataSet(xornn, trainData, ACTF_SIGMOID);
 
     // // print outputs per layer (debug)
     // float *outs;

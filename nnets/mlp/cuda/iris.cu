@@ -26,54 +26,6 @@
 // neurons per layer (4 inputs, 8 hidden, 3 outputs)
 int neuronsPerLayer[] = { 4, 8, 3 };
 
-
-bool AllocateDataSetArrays(DataSet *data)
-{
-    data->inputs = (float*) malloc(sizeof(float) * data->inputSize * data->nCases);
-    
-    if (data->inputs == NULL)
-        return false;
-
-    data->outputs = (float*) malloc(sizeof(float) * data->outputSize * data->nCases);
-
-    if (data->outputs == NULL) {
-        free(data->inputs);
-        return false;
-    }
-
-    data->location = LOC_HOST;
-    
-    return true;
-}
-
-void FreeDataSet(DataSet *data)
-{
-    if (data != NULL) {
-        if (data->inputs != NULL) {
-            free(data->inputs);
-            data->inputs = NULL;
-        }
-
-        if (data->outputs != NULL) {
-            free(data->outputs);
-            data->outputs = NULL;
-        }
-
-        if (data->d_inputs != NULL) {
-            cudaFree(data->d_inputs);
-            data->d_inputs = NULL;
-        }
-
-        if (data->d_outputs != NULL) {
-            cudaFree(data->d_outputs);
-            data->d_outputs = NULL;
-        }
-
-        free(data);
-    }
-}
-
-
 typedef enum tagClass {
     iris_setosa,
     iris_versicolor,
@@ -88,16 +40,9 @@ DataSet* read_dataset(char *filename)
     char    buffer[140];
     DataSet *dset;
 
-    dset = (DataSet*) malloc(sizeof(DataSet));
-    if (dset == NULL) {
-        fprintf(stderr, "Could not allocate memory\n");
-        return NULL;
-    }
-
     f = fopen(filename, "r");
     if (f == NULL) {
         fprintf(stderr, "File not found: %s\n", filename);
-        free(dset);
         return NULL;
     }
 
@@ -108,22 +53,15 @@ DataSet* read_dataset(char *filename)
 
     if (!feof(f) || ferror(f)) {
         fprintf(stderr, "IO error while reading from file\n");
-        free(dset);
         fclose(f);
         return NULL;
     }
     fseek(f, 0, SEEK_SET);
 
-    // prepare dataset
-    dset->nCases = i;
-    dset->inputSize = 4;
-    dset->outputSize = 3;
-    dset->d_inputs = NULL;
-    dset->d_outputs = NULL;
-    if (!AllocateDataSetArrays(dset)) {
-        fprintf(stderr, "Could not allocate memory for dataset data\n");
-        free(dset);
-        fclose(f);
+    dset = CreateDataSet(i, 4, 3);
+
+    if (dset == NULL) {
+        fprintf(stderr, "Error creating dataset\n"); 
         return NULL;
     }
 
@@ -218,10 +156,10 @@ char *class_to_string(Class c)
 
 void print_network_data(MLPNetwork *net)
 {
-    printf("nLayers = %d, d_weights = %d, nWeights = %d, nCases = %d\n",
-           net->nLayers, net->d_weights, net->nWeights, net->nCases);
-    printf("output ptr for first layer: %d\n", net->layers[0]->d_outs);
-    printf("output ptr for last layer: %d\n", net->layers[net->nLayers-1]->d_outs);
+    printf("nLayers = %d, d_weights = %lu, nWeights = %d, nCases = %d\n",
+           net->nLayers, (unsigned long) net->d_weights, net->nWeights, net->nCases);
+    printf("output ptr for first layer: %lu\n", (unsigned long) net->layers[0]->d_outs);
+    printf("output ptr for last layer: %lu\n", (unsigned long) net->layers[net->nLayers-1]->d_outs);
 }
 
 int main(int argc, char **argv)
@@ -258,7 +196,7 @@ int main(int argc, char **argv)
 
     // free the training dataset
     cudaThreadSynchronize();
-    FreeDataSet(train_set);
+    DestroyDataSet(train_set);
 
     // testing
     test_set = read_dataset("iris.test");
@@ -313,7 +251,7 @@ int main(int argc, char **argv)
     printf("Total classificarion errors: %d\n", errors);
 
     DestroyNetwork(irisnn);
-    FreeDataSet(test_set);
+    DestroyDataSet(test_set);
 
     return 0;
 }

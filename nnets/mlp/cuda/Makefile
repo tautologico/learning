@@ -1,4 +1,4 @@
-all: xor_mlp
+all: iris
 
 iris: iris.o mlpnnets.o
 	nvcc -o iris iris.o mlpnnets.o -lcurand
@@ -32,3 +32,4 @@ clean:
 	rm -f xor_train
 	rm -f testfwd
 	rm -f xor_mlp
+	rm -f iris

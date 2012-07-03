@@ -17,8 +17,8 @@
 
 #define SEED                  631814
 
-#define EPOCHS                7000
-#define LEARNING_RATE         0.003
+#define EPOCHS                3000
+#define LEARNING_RATE         0.006
 
 #define MAX(a, b)             (a >= b? a : b)
 
@@ -40,24 +40,26 @@ DataSet* read_dataset(char *filename)
 {
     FILE    *f;
     int     done = FALSE, i, j, k;
-    double  fnlwgt, education_num, capital_gain, capital_loss, hours_per_week, age;
-    char workclass[40],  education[40],  marital_status[40], occupation[40], relationship[40], race[40], sex[40], native_country[40];
+    double  fnlwgt, education_num, capital_gain, capital_loss;
+    double  hours_per_week, age;
+    char    workclass[40],  education[40],  marital_status[40], occupation[40];
+    char    relationship[40], race[40], sex[40], native_country[40];
     char    buffer[240];
     DataSet *dset;
-        
+
     dset = (DataSet*) malloc(sizeof(DataSet));
     if (dset == NULL) {
         fprintf(stderr, "Could not allocate memory\n");
         return NULL;
     }
-          
+
     f = fopen(filename, "r");
     if (f == NULL) {
         fprintf(stderr, "File not found: %s\n", filename);
         free(dset);
         return NULL;
     }
-       
+
     // count lines in file to allocate dataset arrays
     i = 0;
     while (fgets(buffer, 240, f) != NULL)
@@ -70,20 +72,22 @@ DataSet* read_dataset(char *filename)
         return NULL;
     }
     fseek(f, 0, SEEK_SET);
-                
+
     // prepare dataset
     dset->n_cases = i;
     dset->input_size = 14;
     dset->output_size = 2;
     allocate_dataset_arrays(dset);
-            
+
     i = 0;
     while (!done) {
-        j = fscanf(f, "%lf, %s %lf, %s %lf, %s %s %s %s %s %lf, %lf, %lf, %s %s\n", &age, &workclass,
-                   &fnlwgt, education, &education_num, marital_status, occupation, relationship, &race, 
-                   &sex, &capital_gain, &capital_loss, &hours_per_week, native_country, buffer);
-        /*printf("%3.2lf; %s; %3.2lf; %s; %3.2lf; %s; %s; %s; %s; %s; %3.2lf; %3.2lf; %3.2lf; %s; %s\n", age, workclass, fnlwgt, education, education_num, 
-                     marital_status, occupation, relationship, race, sex, capital_gain, 
+        j = fscanf(f, "%lf, %s %lf, %s %lf, %s %s %s %s %s %lf, %lf, %lf, %s %s\n",
+                   &age, &workclass, &fnlwgt, education, &education_num,
+                   marital_status, occupation, relationship, &race, &sex,
+                   &capital_gain, &capital_loss, &hours_per_week,
+                   native_country, buffer);
+        /*printf("%3.2lf; %s; %3.2lf; %s; %3.2lf; %s; %s; %s; %s; %s; %3.2lf; %3.2lf; %3.2lf; %s; %s\n", age, workclass, fnlwgt, education, education_num,
+                     marital_status, occupation, relationship, race, sex, capital_gain,
                      capital_loss, hours_per_week, native_country, buffer);*/
 
         if (j != 15)
@@ -94,31 +98,35 @@ DataSet* read_dataset(char *filename)
             dset->input[i][1] = string_to_double_workclass(workclass);
             dset->input[i][2] = fnlwgt;
             dset->input[i][3] = string_to_double_education(education);
-            dset->input[i][4] = education_num;            
-            dset->input[i][5] = string_to_double_marital_status(marital_status);            
-            dset->input[i][6] = string_to_double_occupation(occupation);            
-            dset->input[i][7] = string_to_double_relationship(relationship);            
-            dset->input[i][8] = string_to_double_race(race);            
-            dset->input[i][9] = string_to_double_sex(sex);            
-            dset->input[i][10] = capital_gain;                        
-            dset->input[i][11] = capital_loss;            
-            dset->input[i][12] = hours_per_week;            
-            dset->input[i][13] = string_to_double_native_country(native_country);                                    
+            dset->input[i][4] = education_num;
+            dset->input[i][5] = string_to_double_marital_status(marital_status);
+            dset->input[i][6] = string_to_double_occupation(occupation);
+            dset->input[i][7] = string_to_double_relationship(relationship);
+            dset->input[i][8] = string_to_double_race(race);
+            dset->input[i][9] = string_to_double_sex(sex);
+            dset->input[i][10] = capital_gain;
+            dset->input[i][11] = capital_loss;
+            dset->input[i][12] = hours_per_week;
+            dset->input[i][13] = string_to_double_native_country(native_country);
 
             if (strstr(buffer, "<=50K")) {
                 dset->output[i][0] = 0.9;
                 dset->output[i][1] = 0.1;
-            } else { 
+            } else {
                 dset->output[i][0] = 0.1;
                 dset->output[i][1] = 0.9;
             }
             ++i;
 
         }
-        
+
     }
 
-    fclose(f);                                                                                                       
+    if (i != dset->n_cases)
+        fprintf(stderr, "Error reading dataset: could not read all expected cases. Expected %d, got %d\n",
+                dset->n_cases, i);
+
+    fclose(f);
     return dset;
 }
 
@@ -149,7 +157,7 @@ double string_to_double_sex(char *c)
     else if(strstr(c, "Male,"))
         res = MALE;
     else res = INTERROGACAO;
-        
+
     return res;
 }
 
@@ -174,7 +182,7 @@ double string_to_double_race(char *c)
     else if(strstr(c, "Black,"))
         res = BLACK;
     else res = INTERROGACAO;
-        
+
     return res;
 }
 
@@ -227,7 +235,7 @@ double string_to_double_occupation(char *c)
     else if(strstr(c, "Armed-Forces,"))
         res = ARMED_FORCES;
     else res = INTERROGACAO;
-        
+
     return res;
 }
 
@@ -255,7 +263,7 @@ double string_to_double_relationship(char *c)
     else if(strstr(c, "Unmarried,"))
         res = UNMARRIED;
     else res = INTERROGACAO;
-        
+
     return res;
 }
 
@@ -286,7 +294,7 @@ double string_to_double_marital_status(char *c)
     else if(strstr(c, "Married-AF-spouse,"))
         res = MARRIED_AF_SPOUSE;
     else res = INTERROGACAO;
-        
+
     return res;
 }
 
@@ -345,7 +353,7 @@ double string_to_double_education(char *c)
         res = N5TH_6TH;
     else if(strstr(c, "Preschool,"))
         res = PRESCHOOL;
-    else res = INTERROGACAO;    
+    else res = INTERROGACAO;
     return res;
 }
 
@@ -379,14 +387,14 @@ double string_to_double_workclass(char *c)
     else if(strstr(c, "Never-worked,"))
         res = NEVER_WORKED;
     else res = INTERROGACAO;
-        
+
     return res;
 }
 
 #define UNITED_STATES 1.0
 #define CAMBODIA 2.0
 #define ENGLAND 3.0
-#define PUERTO_RICO 4.0 
+#define PUERTO_RICO 4.0
 #define CANADA 5.0
 #define GERMANY 6.0
 #define OUTLYING_US__GUAM_USVI_ETC__ 7.0
@@ -409,7 +417,7 @@ double string_to_double_workclass(char *c)
 #define FRANCE 24.0
 #define DOMINICAN_REPUBLIC 25.0
 #define LAOS 26.0
-#define ECUADOR 27.0 
+#define ECUADOR 27.0
 #define TAIWAN 28.0
 #define HAITI 29.0
 #define COLUMBIA 30.0
@@ -478,7 +486,7 @@ double string_to_double_native_country(char *c)
     else if(strstr(c, "France,"))
         res = FRANCE;
     else if(strstr(c, "Dominican-Republic,"))
-        res = DOMINICAN_REPUBLIC;        
+        res = DOMINICAN_REPUBLIC;
     else if(strstr(c, "Laos,"))
         res = LAOS;
     else if(strstr(c, "Ecuador,"))
@@ -488,7 +496,7 @@ double string_to_double_native_country(char *c)
     else if(strstr(c, "Haiti,"))
         res = HAITI;
     else if(strstr(c, "Columbia,"))
-        res = COLUMBIA;        
+        res = COLUMBIA;
     else if(strstr(c, "Hungary,"))
         res = HUNGARY;
     else if(strstr(c, "Guatemala,"))
@@ -498,7 +506,7 @@ double string_to_double_native_country(char *c)
     else if(strstr(c, "Scotland,"))
         res = SCOTLAND;
     else if(strstr(c, "Thailand,"))
-        res = THAILAND;        
+        res = THAILAND;
     else if(strstr(c, "Yugoslavia,"))
         res = YUGOSLAVIA;
     else if(strstr(c, "El-Salvador,"))
@@ -508,11 +516,11 @@ double string_to_double_native_country(char *c)
     else if(strstr(c, "Peru,"))
         res = PERU;
     else if(strstr(c, "Hong,"))
-        res = HONG;        
+        res = HONG;
     else if(strstr(c, "Holand-Netherlands,"))
         res = HOLAND_NETHERLANDS;
     else res = INTERROGACAO;
-        
+
     return res;
 }
 
@@ -571,14 +579,14 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    add_layer(adultnn, 8);  // hidden layer
+    add_layer(adultnn, 28);  // hidden layer
     add_layer(adultnn, 2);  // output layer
     initialize_weights(adultnn, SEED);
     print_network_structure(adultnn);
 
     printf("Training network with %d epochs...\n", EPOCHS);
     e = batch_train(adultnn, train_set, LEARNING_RATE, EPOCHS,
-                    sigmoid, dsigmoid);
+                   sigmoid, dsigmoid);
     printf("Training finished, approximate final SSE: %f\n", e);
 
     print_network_structure(adultnn);
@@ -606,6 +614,6 @@ int main(int argc, char **argv)
     acc = 100.0 - (100.0 * errors / test_set->n_cases);
     printf("Testing accuracy: %f\n", acc);
     printf("Total classificarion errors: %d\n", errors);
-    system("pause");
+
     return 0;
 }

@@ -81,17 +81,17 @@ DataSet* read_dataset(char *filename)
             dset->inputs[iix++] = pwid;
 
             if (strstr(buffer, "setosa")) {
-                dset->outputs[oix++] = 0.9;
-                dset->outputs[oix++] = 0.1;
-                dset->outputs[oix++] = 0.1;
+                dset->outputs[oix++] = 0.9f;
+                dset->outputs[oix++] = 0.1f;
+                dset->outputs[oix++] = 0.1f;
             } else if (strstr(buffer, "versicolor")) {
-                dset->outputs[oix++] = 0.1;
-                dset->outputs[oix++] = 0.9;
-                dset->outputs[oix++] = 0.1;
+                dset->outputs[oix++] = 0.1f;
+                dset->outputs[oix++] = 0.9f;
+                dset->outputs[oix++] = 0.1f;
             } else { // assume class "virginica"
-                dset->outputs[oix++] = 0.1;
-                dset->outputs[oix++] = 0.1;
-                dset->outputs[oix++] = 0.9;
+                dset->outputs[oix++] = 0.1f;
+                dset->outputs[oix++] = 0.1f;
+                dset->outputs[oix++] = 0.9f;
             }
         }
     }

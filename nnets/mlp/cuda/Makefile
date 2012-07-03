@@ -1,5 +1,11 @@
 all: iris
 
+adult: adult.o mlpnnets.o
+	nvcc -o adult adult.o mlpnnets.o -lcurand
+
+adult.o: adult.cu mlpnnets.h
+	nvcc -c adult.cu
+
 iris: iris.o mlpnnets.o
 	nvcc -o iris iris.o mlpnnets.o -lcurand
 

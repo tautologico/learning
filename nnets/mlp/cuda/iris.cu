@@ -36,7 +36,7 @@ DataSet* read_dataset(char *filename)
 {
     FILE    *f;
     int     i, j;
-    double  slen, swid, plen, pwid;
+    float   slen, swid, plen, pwid;
     char    buffer[140];
     DataSet *dset;
 
@@ -68,7 +68,7 @@ DataSet* read_dataset(char *filename)
     int  iix = 0, oix = 0;
     bool done = false;
     while (!done) {
-        j = fscanf(f, "%lf,%lf,%lf,%lf,%s\n", &slen, &swid,
+        j = fscanf(f, "%f,%f,%f,%f,%s\n", &slen, &swid,
                    &plen, &pwid, buffer);
 
         if (j != 5)

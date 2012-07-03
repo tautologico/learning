@@ -15,8 +15,12 @@ basic: mlpnnets.o basictests.o
 iris: testiris.o mlpnnets.o
 	gcc -o iris testiris.o mlpnnets.o
 
+adult: testadult.o mlpnnets.o
+	gcc -o adult testadult.o mlpnnets.o
+
 clean:
 	rm -f *.o
 	rm -f *.gch
 	rm -f basic
 	rm -f iris
+	rm -f adult

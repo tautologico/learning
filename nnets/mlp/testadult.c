@@ -36,6 +36,23 @@ typedef enum tagClass {
     menorIgual_50k
 } Class;
 
+void destroy_dataset(DataSet *data)
+{
+    if (data != NULL) {
+        if (data->input != NULL) {
+            free(data->input);
+            data->input = NULL;
+        }
+
+        if (data->output != NULL) {
+            free(data->output);
+            data->output = NULL;
+        }
+
+        free(data);
+    }
+}
+
 DataSet* read_dataset(char *filename)
 {
     FILE    *f;
@@ -614,6 +631,9 @@ int main(int argc, char **argv)
     acc = 100.0 - (100.0 * errors / test_set->n_cases);
     printf("Testing accuracy: %f\n", acc);
     printf("Total classificarion errors: %d\n", errors);
+
+    destroy_dataset(train_set);
+    destroy_dataset(test_set);
 
     return 0;
 }

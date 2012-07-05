@@ -19,6 +19,16 @@
 // training TODO: implement functions to change it?
 int debug_train = 0;
 
+void debug_on(void)
+{
+    debug_train = 1;
+}
+
+void debug_off(void)
+{
+    debug_train = 0;
+}
+
 // sigmoid activation function
 double sigmoid(double t)
 {

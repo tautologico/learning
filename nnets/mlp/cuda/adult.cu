@@ -15,9 +15,10 @@
 
 #include "mlpnnets.h"
 
-#define SEED                  631814ULL
+//#define SEED                  631814ULL
+#define SEED                  197817ULL
 
-#define EPOCHS                7000
+#define EPOCHS                3000
 #define LEARNING_RATE         0.003
 
 #define MAX_ABS               1.2f
@@ -579,7 +580,7 @@ int main(int argc, char **argv)
     RandomWeights(adultnn, MAX_ABS, SEED);
 
     printf("Training network with %d epochs...\n", EPOCHS);
-    e = BatchTrainBackprop(adultnn, train_set, EPOCHS, LEARNING_RATE, 1, 0);
+    e = BatchTrainBackprop(adultnn, train_set, EPOCHS, LEARNING_RATE, 0, 0);
     printf("Training finished, approximate final SSE: %f\n", e);
 
     printf("Weights after training:\n");

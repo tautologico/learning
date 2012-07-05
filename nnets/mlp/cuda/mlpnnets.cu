@@ -595,7 +595,9 @@ float BatchTrainBackprop(MLPNetwork *nnet, DataSet *data, int epochs,
     // allocate memory for derivatives
     d_derivs = allocateFloatsDev(data->nCases * nnet->nWeights);
     
-    for (int e = 0; e < epochs; ++e) {        
+    for (int e = 0; e < epochs; ++e) {
+	//printf("- Epoch %d\n", e);
+	
         // forward propagation of all the cases
         PresentInputs(nnet, data->d_inputs, ACTF_SIGMOID);
         //cudaThreadSynchronize();

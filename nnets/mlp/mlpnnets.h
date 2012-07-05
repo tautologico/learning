@@ -47,6 +47,10 @@ double sigmoid(double t);
 double dsigmoid(double t);
 double threshold(double t);
 
+// debugging option
+void debug_on(void);
+void debug_off(void);
+
 // network functions
 Network *create_network(int n_inputs);
 Layer* add_layer(Network *nnet, int n_neurons);

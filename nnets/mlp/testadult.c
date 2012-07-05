@@ -15,10 +15,12 @@
 #define FALSE   0
 #define INTERROGACAO 0.0
 
-#define SEED                  631814
+//#define SEED                  631814
+//#define SEED                  6318147
+#define SEED                  67
 
-#define EPOCHS                3000
-#define LEARNING_RATE         0.006
+#define EPOCHS                500
+#define LEARNING_RATE         0.0008
 
 #define MAX(a, b)             (a >= b? a : b)
 
@@ -162,8 +164,8 @@ void print_dataset(DataSet *dset)
     }
 }
 
-#define FEMALE 1.0
-#define MALE 2.0
+#define FEMALE 2.0
+#define MALE 4.0
 
 double string_to_double_sex(char *c)
 {
@@ -178,11 +180,11 @@ double string_to_double_sex(char *c)
     return res;
 }
 
-#define WHITE 1.0
-#define ASIAN_PAC_ISLANDER 2.0
-#define AMER_INDIAN_ESKIMO 3.0
-#define OTHER 4.0
-#define BLACK 5.0
+#define WHITE 2.0
+#define ASIAN_PAC_ISLANDER 4.0
+#define AMER_INDIAN_ESKIMO 8.0
+#define OTHER 16.0
+#define BLACK 32.0
 
 double string_to_double_race(char *c)
 {
@@ -596,12 +598,14 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    add_layer(adultnn, 28);  // hidden layer
+    add_layer(adultnn, 42);  // hidden layer
+    add_layer(adultnn, 14);
     add_layer(adultnn, 2);  // output layer
     initialize_weights(adultnn, SEED);
     print_network_structure(adultnn);
 
     printf("Training network with %d epochs...\n", EPOCHS);
+    debug_on();
     e = batch_train(adultnn, train_set, LEARNING_RATE, EPOCHS,
                    sigmoid, dsigmoid);
     printf("Training finished, approximate final SSE: %f\n", e);

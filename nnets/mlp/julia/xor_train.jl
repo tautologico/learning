@@ -5,7 +5,7 @@
 # Andrei de A. Formiga, 2012-05-29
 #
 
-load("mlpnnets.jl")
+require("mlpnnets.jl")
 
 function build_xor_net()
     xornn = MLPNNet(2, [2, 1])

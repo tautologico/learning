@@ -5,7 +5,7 @@
 # Andrei de A. Formiga, 2012-05-07
 #
 
-load("mlpnnets.jl")
+require("mlpnnets.jl")
 
 function build_xor_net()
     xornn = MLPNNet(2, [2, 1])
@@ -30,3 +30,6 @@ function test_xor()
     println("All tests passed")    
 end
     
+if !isinteractive()
+    test_xor()
+end

@@ -152,13 +152,20 @@ mod tests {
 	use super::HashSymbTable;
 
 	#[inline]
+	fn get_symb_table_1() -> HashSymbTable {
+		let mut table = HashSymbTable::new();
+		table.new_type(~"bool", 2);
+		table
+	}
+
+	#[inline]
 	fn get_test_factor_1() -> Factor {
 		let mut f = Factor::empty_table(~[0, 1, 2], 
 			                            ~[0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]);
 		let booltyp = f.table.new_type(~"bool", 2);
-		let v1 = f.table.new_var(~"A", booltyp);
-		let v2 = f.table.new_var(~"B", booltyp);
-		let v3 = f.table.new_var(~"C", booltyp);
+		let _ = f.table.new_var(~"A", booltyp);
+		let _ = f.table.new_var(~"B", booltyp);
+		let _ = f.table.new_var(~"C", booltyp);
 		f
 	}
 

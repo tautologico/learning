@@ -86,7 +86,7 @@ struct TypeSpec {
 #[deriving(Eq, Clone)]
 struct VarSpec {
 	name: ~str,
-	typ: Type    // TODO: shared reference to Type?
+	typ: Type
 }
 
 /// A value for a discrete variable is just an index into the list of values
@@ -116,15 +116,27 @@ impl Factor {
 
 	pub fn marginalize_vars(&self, vars: &[Var]) -> Factor {
 		let res_vars = self.sum_factor_vars(vars);
+		let res_vals = zero_vector(self.card_vars(res_vars));
+		let ixs = self.vars_indices(vars);
 
-		//for v in vars.iter() {
+		for i in range(0, self.values.len()) {
 
-		//}
+		}
 
 		Factor::new(res_vars, HashSymbTable::new(), ~[0.0, 1.0])
 	}
 
 	// --- private methods
+
+	fn index_to_assignment(&self, ix: uint) -> ~[Value] {
+		let res = std::vec::with_capacity(self.vars.len());
+		res
+	}
+
+	/// Returns the indices of variables in vars among the factor variables
+	fn vars_indices(&self, vars: &[Var]) -> ~[uint] {
+		vars.iter().map(|x| self.vars.position_elem(x).unwrap()).collect()
+	}
 
 	/// Returns variables in factor that are not in vars
 	fn sum_factor_vars(&self, vars: &[Var]) -> ~[Var] {
@@ -137,8 +149,15 @@ impl Factor {
 	}
 }
 
-// --- operations ---------------------------------------------------
+// --- utilities ----------------------------------------------------
 
+fn zero_vector(n: uint) -> ~[f64] {
+	let mut res = std::vec::with_capacity(n);
+	for _ in range(0, n) {
+		res.push(0.0);
+	}
+	res
+}
 
 // fn multiply_factors(f1: &Factor, f2: &Factor) -> Factor {
 // 	// TODO 
@@ -148,13 +167,15 @@ impl Factor {
 #[cfg(test)]
 mod tests {
 	use super::Factor;
-	use super::{VarSpec};
 	use super::HashSymbTable;
 
 	#[inline]
 	fn get_symb_table_1() -> HashSymbTable {
 		let mut table = HashSymbTable::new();
-		table.new_type(~"bool", 2);
+		let booltyp = table.new_type(~"bool", 2);
+		let _ = table.new_var(~"A", booltyp);
+		let _ = table.new_var(~"B", booltyp);
+		let _ = table.new_var(~"C", booltyp);
 		table
 	}
 
@@ -167,6 +188,18 @@ mod tests {
 		let _ = f.table.new_var(~"B", booltyp);
 		let _ = f.table.new_var(~"C", booltyp);
 		f
+	}
+
+	#[test]
+	fn test_vars_indices() {
+		let f1 = get_test_factor_1();
+		let vs1 = ~[1];
+		let vs2 = ~[0, 2];
+		let vs3 = ~[0, 1, 2];
+
+		assert_eq!(f1.vars_indices(vs1), ~[1]);
+		assert_eq!(f1.vars_indices(vs2), ~[0, 2]);
+		assert_eq!(f1.vars_indices(vs3), ~[0, 1, 2]);
 	}
 
 	#[test]

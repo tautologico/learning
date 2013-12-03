@@ -94,18 +94,18 @@ type Value = uint;
 
 type Assignment = ~[(Var, Value)];
 
-struct Factor {
+struct Factor<'r> {
 	vars: ~[Var],
-	table: HashSymbTable,
+	table: &'r HashSymbTable,
 	values: ~[f64]
 }
 
-impl Factor {
-	fn empty_table(vars: ~[Var], vals: ~[f64]) -> Factor {
-		Factor { vars: vars, table: HashSymbTable::new(), values: vals }
-	}
+impl<'r> Factor<'r> {
+	// fn empty_table(vars: ~[Var], vals: ~[f64]) -> Factor {
+	// 	Factor { vars: vars, table: HashSymbTable::new(), values: vals }
+	// }
 
-	fn new(vars: ~[Var], table: HashSymbTable, vals: ~[f64]) -> Factor {
+	fn new(vars: ~[Var], table: &'r HashSymbTable, vals: ~[f64]) -> Factor<'r> {
 		Factor { vars: vars, table: table, values: vals }
 	}
 
@@ -114,7 +114,7 @@ impl Factor {
 		self.vars.position_elem(&v)
 	}
 
-	pub fn marginalize_vars(&self, vars: &[Var]) -> Factor {
+	pub fn marginalize_vars(&self, vars: &[Var]) -> Factor<'r> {
 		let res_vars = self.sum_factor_vars(vars);
 		let res_vals = zero_vector(self.card_vars(res_vars));
 		let ixs = self.vars_indices(vars);
@@ -123,7 +123,7 @@ impl Factor {
 
 		}
 
-		Factor::new(res_vars, HashSymbTable::new(), ~[0.0, 1.0])
+		Factor::new(res_vars, self.table, ~[0.0, 1.0])
 	}
 
 	// --- private methods
@@ -180,19 +180,15 @@ mod tests {
 	}
 
 	#[inline]
-	fn get_test_factor_1() -> Factor {
-		let mut f = Factor::empty_table(~[0, 1, 2], 
-			                            ~[0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]);
-		let booltyp = f.table.new_type(~"bool", 2);
-		let _ = f.table.new_var(~"A", booltyp);
-		let _ = f.table.new_var(~"B", booltyp);
-		let _ = f.table.new_var(~"C", booltyp);
-		f
+	fn get_test_factor_1<'r>(table: &'r HashSymbTable) -> Factor<'r> {
+		Factor::new(~[0, 1, 2], table,
+			        ~[0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25])
 	}
 
 	#[test]
 	fn test_vars_indices() {
-		let f1 = get_test_factor_1();
+		let table = get_symb_table_1();
+		let f1 = get_test_factor_1(&table);
 		let vs1 = ~[1];
 		let vs2 = ~[0, 2];
 		let vs3 = ~[0, 1, 2];
@@ -204,7 +200,8 @@ mod tests {
 
 	#[test]
 	fn test_card_vars() {
-		let f1 = get_test_factor_1();
+		let table = get_symb_table_1();
+		let f1 = get_test_factor_1(&table);
 		let vs1 = ~[1];
 		let vs2 = ~[0, 2];
 		let vs3 = ~[0, 1, 2];
@@ -216,7 +213,8 @@ mod tests {
 
 	#[test]
 	fn test_sum_factor_vars() {
-		let f1 = get_test_factor_1();
+		let table = get_symb_table_1();
+		let f1 = get_test_factor_1(&table);
 		let vs1 = ~[1];
 		let vs2 = ~[0];
 		let vs3 = ~[0, 2];

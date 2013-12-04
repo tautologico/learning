@@ -116,7 +116,6 @@ impl<'r> Factor<'r> {
 
 	pub fn marginalize_vars(&self, vars: &[Var]) -> Factor<'r> {
 		let res_vars = self.sum_factor_vars(vars);
-		let vixs = self.vars_indices(res_vars);     // indices of result vars (rel. to self.vars)
 		let mut res_vals = zero_vector_f64(self.card_vars(res_vars));
 		let mut assign = zero_vector_uint(self.vars.len());
 
@@ -134,6 +133,10 @@ impl<'r> Factor<'r> {
 		}
 
 		Factor::new(res_vars, self.table, res_vals)
+	}
+
+	pub fn multiply(&self, other: &'r Factor) -> Factor<'r> {
+		Factor::new(~[], self.table, ~[])   // TODO
 	}
 
 	// --- private methods
@@ -169,7 +172,7 @@ impl<'r> Factor<'r> {
 	}
 
 	/// Returns the indices of variables in vars among the factor variables
-	fn vars_indices(&self, vars: &[Var]) -> ~[uint] {
+	fn vars_indices(&self, vars: &[Var]) -> ~[uint] {  // TODO: remove?
 		vars.iter().map(|x| self.vars.position_elem(x).unwrap()).collect()
 	}
 
@@ -195,10 +198,6 @@ fn zero_vector_f64(n: uint) -> ~[f64] {
 fn zero_vector_uint(n: uint) -> ~[uint] {
 	std::vec::from_elem(n, 0u)
 }
-
-// fn multiply_factors(f1: &Factor, f2: &Factor) -> Factor {
-// 	// TODO 
-// }
 
 
 #[cfg(test)]

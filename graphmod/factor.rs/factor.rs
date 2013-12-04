@@ -116,14 +116,24 @@ impl<'r> Factor<'r> {
 
 	pub fn marginalize_vars(&self, vars: &[Var]) -> Factor<'r> {
 		let res_vars = self.sum_factor_vars(vars);
-		let res_vals = zero_vector_f64(self.card_vars(res_vars));
-		let ixs = self.vars_indices(vars);
+		let vixs = self.vars_indices(res_vars);     // indices of result vars (rel. to self.vars)
+		let mut res_vals = zero_vector_f64(self.card_vars(res_vars));
+		let mut assign = zero_vector_uint(self.vars.len());
 
 		for i in range(0, self.values.len()) {
-
+			let mut ix = 0;
+			for j in range(0, assign.len()) {
+				match vixs.position_elem(&j) {
+					Some(0) => ix += assign[j],
+					Some(vi) => ix += assign[j] * self.table.var_cardinality(self.vars[vixs[vi-1]]),
+					None => ()
+				}
+			}
+			res_vals[ix] += self.values[i];
+			self.next_assignment(assign);
 		}
 
-		Factor::new(res_vars, self.table, ~[0.0, 1.0])
+		Factor::new(res_vars, self.table, res_vals)
 	}
 
 	// --- private methods
@@ -137,6 +147,16 @@ impl<'r> Factor<'r> {
 			c = c / card;
 		}
 		res
+	}
+
+	fn next_assignment(&self, assign: &mut [uint]) {
+		for i in range(0, assign.len()) {
+			let v = self.vars[i];
+			assign[i] = (assign[i] + 1) % self.table.var_cardinality(v);
+			if assign[i] != 0 {
+				break;
+			}
+		}
 	}
 
 	/// Returns the indices of variables in vars among the factor variables
@@ -157,12 +177,14 @@ impl<'r> Factor<'r> {
 
 // --- utilities ----------------------------------------------------
 
+#[inline]
 fn zero_vector_f64(n: uint) -> ~[f64] {
-	let mut res = std::vec::with_capacity(n);
-	for _ in range(0, n) {
-		res.push(0.0);
-	}
-	res
+	std::vec::from_elem(n, 0.0)
+}
+
+#[inline]
+fn zero_vector_uint(n: uint) -> ~[uint] {
+	std::vec::from_elem(n, 0u)
 }
 
 // fn multiply_factors(f1: &Factor, f2: &Factor) -> Factor {
@@ -209,6 +231,23 @@ mod tests {
 	}
 
 	#[test]
+	fn test_marginalize_vars() {
+		let table = get_symb_table_1();
+		let f1 = get_test_factor_1(&table);
+		let f2 = f1.marginalize_vars([1]);
+		assert_eq!(f2.vars.len(), 2);
+		assert_eq!(f2.values.len(), 4);
+		assert_eq!(f2.values, ~[0.5, 0.5, 0.5, 0.5]);
+
+		let table2 = get_symb_table_2();
+		let f3 = get_test_factor_2(&table2);
+		let f4 = f3.marginalize_vars([1]);
+		assert_eq!(f4.vars.len(), 2);
+		assert_eq!(f4.values.len(), 4);
+		assert_eq!(f4.values, ~[0.75, 0.75, 0.75, 0.75]);
+	}
+
+	#[test]
 	fn test_index_to_assignment() {
 		let table = get_symb_table_1();
 		let f1 = get_test_factor_1(&table);
@@ -229,6 +268,21 @@ mod tests {
 		assert_eq!(f2.index_to_assignment(5),  ~[1, 2, 0]);
 		assert_eq!(f2.index_to_assignment(6),  ~[0, 0, 1]);
 		assert_eq!(f2.index_to_assignment(11), ~[1, 2, 1]);
+	}
+
+	#[test]
+	fn test_next_assignment() {
+		let table = get_symb_table_1();
+		let f1 = get_test_factor_1(&table);
+		let mut assign = [0u, 0u, 0u];
+		f1.next_assignment(assign);
+		assert_eq!(assign, [1u, 0u, 0u]);
+		f1.next_assignment(assign);
+		assert_eq!(assign, [0u, 1u, 0u]);
+		f1.next_assignment(assign);
+		assert_eq!(assign, [1u, 1u, 0u]);
+		f1.next_assignment(assign);
+		assert_eq!(assign, [0u, 0u, 1u]);
 	}
 
 	#[test]

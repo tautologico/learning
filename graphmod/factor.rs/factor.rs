@@ -121,14 +121,14 @@ impl<'r> Factor<'r> {
 		let mut assign = zero_vector_uint(self.vars.len());
 
 		for i in range(0, self.values.len()) {
-			let mut ix = 0;
-			for j in range(0, assign.len()) {
-				match vixs.position_elem(&j) {
-					Some(0) => ix += assign[j],
-					Some(vi) => ix += assign[j] * self.table.var_cardinality(self.vars[vixs[vi-1]]),
-					None => ()
-				}
-			}
+			// TODO: change to use assignment_to_index?
+			let (ix, _) = 
+			    assign.iter()
+			        .zip(self.vars.iter())
+			        .filter(|&(_, var)| res_vars.contains(var))
+			        .map(|(val, var)| (val, self.table.var_cardinality(*var)))			        
+			        .fold((0, 1), |(sum, cs), (val, c2)| (sum + val * cs, c2 * cs));
+			
 			res_vals[ix] += self.values[i];
 			self.next_assignment(assign);
 		}
@@ -146,6 +146,15 @@ impl<'r> Factor<'r> {
 			res.push(c % card);
 			c = c / card;
 		}
+		res
+	}
+
+	fn assignment_to_index(&self, assign: &[Value]) -> uint {
+		assert_eq!(assign.len(), self.vars.len());
+		let (res, _) = 
+		    assign.iter()
+		        .zip(self.vars.iter().map(|&v| self.table.var_cardinality(v)))
+		        .fold((0, 1), |(sum, cs), (val, c2)| (sum + val * cs, c2 * cs));
 		res
 	}
 
@@ -227,24 +236,57 @@ mod tests {
 	#[inline]
 	fn get_test_factor_2<'r>(table: &'r HashSymbTable) -> Factor<'r> {
 		Factor::new(~[0, 1, 2], table,
-			        ~[0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25])
+			        ~[0.25, 0.25, 0.25, 0.25, 0.50, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.50])
+	}
+
+	#[inline]
+	fn get_symb_table_3() -> HashSymbTable {
+	    let mut table = HashSymbTable::new();
+		let booltyp = table.new_type(~"bool", 2);
+		let _ = table.new_var(~"A", booltyp);
+		let _ = table.new_var(~"B", booltyp);
+		let _ = table.new_var(~"C", booltyp);
+		let _ = table.new_var(~"D", booltyp);
+		table	
+	}
+
+	#[inline]
+	fn get_test_factor_3<'r>(table: &'r HashSymbTable) -> Factor<'r> {
+		Factor::new(~[0, 1, 2, 3], table,
+			        ~[0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25,
+			          0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25])
 	}
 
 	#[test]
 	fn test_marginalize_vars() {
 		let table = get_symb_table_1();
 		let f1 = get_test_factor_1(&table);
-		let f2 = f1.marginalize_vars([1]);
-		assert_eq!(f2.vars.len(), 2);
-		assert_eq!(f2.values.len(), 4);
-		assert_eq!(f2.values, ~[0.5, 0.5, 0.5, 0.5]);
+		let f1_1 = f1.marginalize_vars([1]);
+		assert_eq!(f1_1.vars.len(), 2);
+		assert_eq!(f1_1.values.len(), 4);
+		assert_eq!(f1_1.values, ~[0.5, 0.5, 0.5, 0.5]);
+		let f1_2 = f1.marginalize_vars([0, 1]);
+		assert_eq!(f1_2.vars.len(), 1);
+		assert_eq!(f1_2.values.len(), 2);
+		assert_eq!(f1_2.values, ~[1.0, 1.0]);
 
 		let table2 = get_symb_table_2();
-		let f3 = get_test_factor_2(&table2);
-		let f4 = f3.marginalize_vars([1]);
-		assert_eq!(f4.vars.len(), 2);
-		assert_eq!(f4.values.len(), 4);
-		assert_eq!(f4.values, ~[0.75, 0.75, 0.75, 0.75]);
+		let f2 = get_test_factor_2(&table2);
+		let f2_1 = f2.marginalize_vars([1]);
+		assert_eq!(f2_1.vars.len(), 2);
+		assert_eq!(f2_1.values.len(), 4);
+		assert_eq!(f2_1.values, ~[1.0, 0.75, 0.75, 1.0]);
+		let f2_2 = f2.marginalize_vars([0]);
+		assert_eq!(f2_2.vars.len(), 2);
+		assert_eq!(f2_2.values.len(), 6);
+		assert_eq!(f2_2.values, ~[0.5, 0.5, 0.75, 0.5, 0.5, 0.75]);
+
+		let table3 = get_symb_table_3();
+		let f3 = get_test_factor_3(&table3);
+		let f3_1 = f3.marginalize_vars([1]);
+		assert_eq!(f3_1.vars.len(), 3);
+		assert_eq!(f3_1.values.len(), 8);
+		assert_eq!(f3_1.values, ~[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]);
 	}
 
 	#[test]
@@ -268,6 +310,29 @@ mod tests {
 		assert_eq!(f2.index_to_assignment(5),  ~[1, 2, 0]);
 		assert_eq!(f2.index_to_assignment(6),  ~[0, 0, 1]);
 		assert_eq!(f2.index_to_assignment(11), ~[1, 2, 1]);
+	}
+
+	#[test]
+	fn test_assignment_to_index() {
+		let table = get_symb_table_1();
+		let f1 = get_test_factor_1(&table);
+		assert_eq!(f1.assignment_to_index([0, 0, 0]), 0u);
+		assert_eq!(f1.assignment_to_index([1, 0, 0]), 1u);
+		assert_eq!(f1.assignment_to_index([0, 1, 0]), 2u);
+		assert_eq!(f1.assignment_to_index([0, 0, 1]), 4u);
+		assert_eq!(f1.assignment_to_index([0, 1, 1]), 6u);
+		assert_eq!(f1.assignment_to_index([1, 1, 1]), 7u);
+
+		let table2 = get_symb_table_2();
+		let f2 = get_test_factor_2(&table2);
+		assert_eq!(f2.assignment_to_index([0, 0, 0]), 0u);
+		assert_eq!(f2.assignment_to_index([1, 0, 0]), 1u);
+		assert_eq!(f2.assignment_to_index([0, 1, 0]), 2u);
+		assert_eq!(f2.assignment_to_index([0, 2, 0]), 4u);
+		assert_eq!(f2.assignment_to_index([0, 1, 1]), 8u);
+		assert_eq!(f2.assignment_to_index([1, 1, 1]), 9u);
+		assert_eq!(f2.assignment_to_index([0, 2, 1]), 10u);
+		assert_eq!(f2.assignment_to_index([1, 2, 1]), 11u);
 	}
 
 	#[test]

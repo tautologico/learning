@@ -135,8 +135,23 @@ impl<'r> Factor<'r> {
 		Factor::new(res_vars, self.table, res_vals)
 	}
 
+	/// Create a new factor by multiplying self with the other factor 
+	/// (both must use the same symbol table)
 	pub fn multiply(&self, other: &'r Factor) -> Factor<'r> {
-		Factor::new(~[], self.table, ~[])   // TODO
+		let res_vars = self.union_vars(other);
+		let mut res_vals = std::vec::from_elem(self.card_vars(res_vars), 1.0);
+		let mut assign = zero_vector_uint(res_vars.len());
+
+		for i in range(0, res_vals.len()) {
+			// project the assignment to both factors and get their values,
+			// multiply values by the current value
+			let si = 0; // TODO
+			let oi = 0; // TODO
+			res_vals[i] *= self.values[si] * other.values[oi];
+			self.next_assignment_vars(assign, res_vars);
+		}
+
+		Factor::new(res_vars, self.table, res_vals)
 	}
 
 	// --- private methods
@@ -161,14 +176,19 @@ impl<'r> Factor<'r> {
 		res
 	}
 
+	#[inline]
 	fn next_assignment(&self, assign: &mut [uint]) {
-		for i in range(0, assign.len()) {
-			let v = self.vars[i];
+		self.next_assignment_vars(assign, self.vars)
+	}
+
+	fn next_assignment_vars(&self, assign: &mut [uint], vars: &[Var]) {
+	    for i in range(0, assign.len()) {
+			let v = vars[i];
 			assign[i] = (assign[i] + 1) % self.table.var_cardinality(v);
 			if assign[i] != 0 {
 				break;
 			}
-		}
+		}	
 	}
 
 	/// Returns the indices of variables in vars among the factor variables
@@ -184,6 +204,15 @@ impl<'r> Factor<'r> {
 	/// Returns the cardinality of a cartesian product of variables
 	fn card_vars(&self, vars: &[Var]) -> uint {
 		vars.iter().map(|&v| self.table.var_cardinality(v)).fold(1, |c1, c2| c1 * c2)
+	}
+
+	/// Returns the union of the variables in self and other
+	fn union_vars(&self, other: &'r Factor) -> ~[Var] {
+		self.vars.iter()
+		    .chain(
+		        other.vars.iter().filter(|&v| !self.vars.contains(v)))
+		    .map(|&x| x.clone())
+		    .collect()
 	}
 }
 
@@ -388,5 +417,25 @@ mod tests {
 		assert_eq!(f1.sum_factor_vars(vs2), ~[1, 2]);
 		assert_eq!(f1.sum_factor_vars(vs3), ~[1]);
 		assert_eq!(f1.sum_factor_vars(vs4), ~[]);
+	}
+
+	#[test]
+	fn test_union_vars() {
+		let table = get_symb_table_1();
+		let f1 = Factor::new(~[0, 1], &table,
+			                 ~[0.25, 0.25, 0.25, 0.25]);
+		let f2 = Factor::new(~[1, 2], &table,
+			                 ~[0.25, 0.25, 0.25, 0.25]);
+		let f3 = Factor::new(~[0, 1, 2], &table,
+			                 ~[0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]);
+		let f4 = Factor::new(~[1], &table,
+			                 ~[0.25, 0.25]);
+
+		assert_eq!(f1.union_vars(&f2), ~[0, 1, 2]);
+		assert_eq!(f2.union_vars(&f1), ~[1, 2, 0]); // implementation is order-sensitive
+		assert_eq!(f1.union_vars(&f3), ~[0, 1, 2]);
+		assert_eq!(f2.union_vars(&f3), ~[1, 2, 0]);
+		assert_eq!(f1.union_vars(&f4), ~[0, 1]);
+		assert_eq!(f2.union_vars(&f4), ~[1, 2]);
 	}
 }

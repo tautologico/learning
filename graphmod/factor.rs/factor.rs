@@ -16,6 +16,7 @@ trait SymbTable<'r> {
 	fn var_spec(&'r self, v: Var) -> &'r VarSpec;
 	fn type_spec(&'r self, t: Type) -> &'r TypeSpec;
 	fn var_cardinality(&self, v: Var) -> uint;
+	fn vars_cardinality(&self, vars: &[Var]) -> uint;
 }
 
 struct HashSymbTable {
@@ -72,6 +73,10 @@ impl<'r> SymbTable<'r> for HashSymbTable {
 		let typ = self.var_index.get(&v).typ;
 		self.typ_index.get(&typ).cardinality
 	}
+
+	fn vars_cardinality(&self, vars: &[Var]) -> uint {
+		vars.iter().map(|&v| self.var_cardinality(v)).fold(1, |c1, c2| c1 * c2)
+	}
 }
 
 type Type = uint;
@@ -98,13 +103,14 @@ type Value = uint;
 struct Assignment<'r> {
 	vars: &'r [Var],
 	table: &'r HashSymbTable,
-	values: ~[Value]
+	values: ~[Value],
+	index: uint
 }
 
 impl<'r> Assignment<'r> {
 	fn zero(vars: &'r [Var], table: &'r HashSymbTable) -> Assignment<'r> {
 		let res_vals = zero_vector_uint(vars.len());
-		Assignment { vars: vars, table: table, values: res_vals }
+		Assignment { vars: vars, table: table, values: res_vals, index: 0u }
 	}
 
 	fn from_index(vars: &'r [Var], table: &'r HashSymbTable, ix: uint) -> Assignment<'r> {
@@ -116,7 +122,7 @@ impl<'r> Assignment<'r> {
 			c = c / card;
 		}
 		
-		Assignment { vars: vars, table: table, values: res }
+		Assignment { vars: vars, table: table, values: res, index: ix }
 	}
 
 	/// project assignment to a smaller set of variables
@@ -131,9 +137,17 @@ impl<'r> Assignment<'r> {
 		ix
 	}
 
+	fn set_values(&mut self, vals: &[Value]) {
+		assert_eq!(self.values.len(), vals.len());
+		for i in range(0, vals.len()) {
+			self.values[i] = vals[i];
+		}
+		// recalculate assignment index
+		self.index = self.project_and_get_index(self.vars);
+	}
+
 	fn to_index(&self) -> uint {
-		// TODO: inefficient
-		self.project_and_get_index(self.vars)
+		self.index
 	}
 
 	fn next(&mut self) {
@@ -143,7 +157,8 @@ impl<'r> Assignment<'r> {
 			if self.values[i] != 0 {
 				break;
 			}
-		}	
+		}
+		self.index += 1;
 	}
 }
 
@@ -169,7 +184,7 @@ impl<'r> Factor<'r> {
 
 	pub fn marginalize_vars(&self, vars: &[Var]) -> Factor<'r> {
 		let res_vars = self.sum_factor_vars(vars);
-		let mut res_vals = zero_vector_f64(self.card_vars(res_vars));
+		let mut res_vals = zero_vector_f64(self.table.vars_cardinality(res_vars));
 		//let mut assign = zero_vector_uint(self.vars.len());
 		let mut assign = Assignment::zero(self.vars, self.table);
 
@@ -189,7 +204,7 @@ impl<'r> Factor<'r> {
 	/// (both must use the same symbol table)
 	pub fn multiply(&self, other: &'r Factor) -> Factor<'r> {
 		let res_vars = self.union_vars(other);
-		let mut res_vals = std::vec::from_elem(self.card_vars(res_vars), 1.0);
+		let mut res_vals = std::vec::from_elem(self.table.vars_cardinality(res_vars), 1.0);
 		// have to create a new block here to avoid problems with borrowing of 
 		// res_vars to create the assignment
 		{
@@ -210,7 +225,7 @@ impl<'r> Factor<'r> {
 
 	pub fn multiply_many(&self, others: &'r [&'r Factor]) -> Factor<'r> {
 		let res_vars = self.union_vars_many(others);
-		let mut res_vals = std::vec::from_elem(self.card_vars(res_vars), 1.0);
+		let mut res_vals = std::vec::from_elem(self.table.vars_cardinality(res_vars), 1.0);
 		// have to create a new block here to avoid problems with borrowing of 
 		// res_vars to create the assignment
 		{
@@ -243,11 +258,6 @@ impl<'r> Factor<'r> {
 	/// Returns variables in factor that are not in vars
 	fn sum_factor_vars(&self, vars: &[Var]) -> ~[Var] {
 		self.vars.iter().filter(|x| !vars.contains(*x)).map(|&x| x.clone()).collect()
-	}
-
-	/// Returns the cardinality of a cartesian product of variables
-	fn card_vars(&self, vars: &[Var]) -> uint {
-		vars.iter().map(|&v| self.table.var_cardinality(v)).fold(1, |c1, c2| c1 * c2)
 	}
 
 	/// Returns the union of the variables in self and other
@@ -467,9 +477,9 @@ mod tests {
 		assert_eq!(assign.to_index(), 1u);
 		assign.next();
 		assert_eq!(assign.to_index(), 2u);
-		assign.values = ~[0, 0, 1];
+		assign.set_values([0, 0, 1]);
 		assert_eq!(assign.to_index(), 4u);
-		assign.values = ~[0, 1, 1];
+		assign.set_values([0, 1, 1]);
 		assert_eq!(assign.to_index(), 6u);
 		assign.next();
 		assert_eq!(assign.to_index(), 7u);
@@ -481,13 +491,13 @@ mod tests {
 		assert_eq!(assign2.to_index(), 1u);
 		assign2.next();
 		assert_eq!(assign2.to_index(), 2u);
-		assign2.values = ~[0, 2, 0];
+		assign2.set_values([0, 2, 0]);
 		assert_eq!(assign2.to_index(), 4u);
-		assign2.values = ~[0, 1, 1];
+		assign2.set_values([0, 1, 1]);
 		assert_eq!(assign2.to_index(), 8u);
 		assign2.next();
 		assert_eq!(assign2.to_index(), 9u);
-		assign2.values = ~[0, 2, 1];
+		assign2.set_values([0, 2, 1]);
 		assert_eq!(assign2.to_index(), 10u);
 		assign2.next();
 		assert_eq!(assign2.to_index(), 11u);
@@ -506,6 +516,12 @@ mod tests {
 		assert_eq!(assign.values, ~[1u, 1u, 0u]);
 		assign.next();
 		assert_eq!(assign.values, ~[0u, 0u, 1u]);
+		assign.next();
+		assign.next();
+		assign.next();
+		assert_eq!(assign.values, ~[1u, 1u, 1u]);
+		assign.next();
+		assert_eq!(assign.values, ~[0u, 0u, 0u]);
 	}
 
 	#[test]
@@ -522,16 +538,15 @@ mod tests {
 	}
 
 	#[test]
-	fn test_card_vars() {
+	fn test_vars_cardinality() {
 		let table = get_symb_table_1();
-		let f1 = get_test_factor_1(&table);
 		let vs1 = ~[1];
 		let vs2 = ~[0, 2];
 		let vs3 = ~[0, 1, 2];
 
-		assert_eq!(f1.card_vars(vs1), 2);
-		assert_eq!(f1.card_vars(vs2), 4);
-		assert_eq!(f1.card_vars(vs3), 8);
+		assert_eq!(table.vars_cardinality(vs1), 2);
+		assert_eq!(table.vars_cardinality(vs2), 4);
+		assert_eq!(table.vars_cardinality(vs3), 8);
 	}
 
 	#[test]

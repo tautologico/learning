@@ -8,8 +8,27 @@ trait ValueMapping {
 	fn str_to_val(&self, &str) -> uint;
 }
 
-/// A discrete variable is just an ID for the variable specification in an index
+/// A discrete variable is just an ID for the variable specification in a SymbolTable
 type Var = uint;
+
+/// A discrete type is just an ID for the type specification in a SymbolTable
+type Type = uint;
+
+/// A value for a discrete variable is just an index into the list of values
+type Value = uint;
+
+/// A discrete (categorical) type for variables
+#[deriving(Eq, Clone)]
+struct TypeSpec {
+	name: ~str,
+	cardinality: uint
+}
+
+#[deriving(Eq, Clone)]
+struct VarSpec {
+	name: ~str,
+	typ: Type
+}
 
 /// Symbol table of variable and type specifications
 trait SymbTable<'r> {
@@ -78,24 +97,6 @@ impl<'r> SymbTable<'r> for HashSymbTable {
 		vars.iter().map(|&v| self.var_cardinality(v)).fold(1, |c1, c2| c1 * c2)
 	}
 }
-
-type Type = uint;
-
-/// A discrete (categorical) type for variables
-#[deriving(Eq, Clone)]
-struct TypeSpec {
-	name: ~str,
-	cardinality: uint
-}
-
-#[deriving(Eq, Clone)]
-struct VarSpec {
-	name: ~str,
-	typ: Type
-}
-
-/// A value for a discrete variable is just an index into the list of values
-type Value = uint;
 
 /// An assignment related to a set of variables 
 // TODO: could be "Assignments", a collection of possible assignments

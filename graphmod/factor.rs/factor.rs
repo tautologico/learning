@@ -17,17 +17,18 @@ type Type = uint;
 /// A value for a discrete variable is just an index into the list of values
 type Value = uint;
 
-/// A discrete (categorical) type for variables
-#[deriving(Eq, Clone)]
-struct TypeSpec {
-	name: ~str,
-	cardinality: uint
-}
-
+/// Specification for a discrete variable
 #[deriving(Eq, Clone)]
 struct VarSpec {
 	name: ~str,
 	typ: Type
+}
+
+/// Specification for discrete (categorical) type for variables
+#[deriving(Eq, Clone)]
+struct TypeSpec {
+	name: ~str,
+	cardinality: uint
 }
 
 /// Symbol table of variable and type specifications

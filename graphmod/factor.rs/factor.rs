@@ -103,14 +103,13 @@ type Value = uint;
 struct Assignment<'r> {
 	vars: &'r [Var],
 	table: &'r HashSymbTable,
-	values: ~[Value],
-	index: uint
+	values: ~[Value]
 }
 
 impl<'r> Assignment<'r> {
 	fn zero(vars: &'r [Var], table: &'r HashSymbTable) -> Assignment<'r> {
 		let res_vals = zero_vector_uint(vars.len());
-		Assignment { vars: vars, table: table, values: res_vals, index: 0u }
+		Assignment { vars: vars, table: table, values: res_vals }
 	}
 
 	fn from_index(vars: &'r [Var], table: &'r HashSymbTable, ix: uint) -> Assignment<'r> {
@@ -122,7 +121,7 @@ impl<'r> Assignment<'r> {
 			c = c / card;
 		}
 		
-		Assignment { vars: vars, table: table, values: res, index: ix }
+		Assignment { vars: vars, table: table, values: res }
 	}
 
 	/// project assignment to a smaller set of variables
@@ -142,12 +141,10 @@ impl<'r> Assignment<'r> {
 		for i in range(0, vals.len()) {
 			self.values[i] = vals[i];
 		}
-		// recalculate assignment index
-		self.index = self.project_and_get_index(self.vars);
 	}
 
 	fn to_index(&self) -> uint {
-		self.index
+		self.project_and_get_index(self.vars)
 	}
 
 	fn next(&mut self) {
@@ -158,7 +155,16 @@ impl<'r> Assignment<'r> {
 				break;
 			}
 		}
-		self.index += 1;
+	}
+
+	/// Sweep all assignments for variables var, executing f on each
+	fn sweep(vars: &'r [Var], table: &'r HashSymbTable, f: |uint, &Assignment|) {
+		let mut assign = Assignment::zero(vars, table);
+		let max_index = table.vars_cardinality(vars);
+		for ix in range(0, max_index) {
+			f(ix, &assign);
+			assign.next();
+		}
 	}
 }
 
@@ -185,17 +191,13 @@ impl<'r> Factor<'r> {
 	pub fn marginalize_vars(&self, vars: &[Var]) -> Factor<'r> {
 		let res_vars = self.sum_factor_vars(vars);
 		let mut res_vals = zero_vector_f64(self.table.vars_cardinality(res_vars));
-		//let mut assign = zero_vector_uint(self.vars.len());
-		let mut assign = Assignment::zero(self.vars, self.table);
 
-		for i in range(0, self.values.len()) {
-			//let ix = self.project_assignment_get_index(assign, self.vars, res_vars);
-			let ix = assign.project_and_get_index(res_vars);
-			
-			res_vals[ix] += self.values[i];
-			//self.next_assignment(assign);
-			assign.next();
-		}
+		Assignment::sweep(self.vars, self.table, 
+			|i, assign| {
+				let ix = assign.project_and_get_index(res_vars);
+				res_vals[ix] += self.values[i];
+			}
+		);
 
 		Factor::new(res_vars, self.table, res_vals)
 	}
@@ -205,20 +207,14 @@ impl<'r> Factor<'r> {
 	pub fn multiply(&self, other: &'r Factor) -> Factor<'r> {
 		let res_vars = self.union_vars(other);
 		let mut res_vals = std::vec::from_elem(self.table.vars_cardinality(res_vars), 1.0);
-		// have to create a new block here to avoid problems with borrowing of 
-		// res_vars to create the assignment
-		{
-			let mut assign = Assignment::zero(res_vars, self.table);
 
-			for i in range(0, res_vals.len()) {
-			    // project the assignment to both factors and get their values,
-			    // multiply values by the current value
-			    let si = assign.project_and_get_index(self.vars);
-			    let oi = assign.project_and_get_index(other.vars);
-			    res_vals[i] *= self.values[si] * other.values[oi];
-			    assign.next();
-		    }
-	    }
+	    Assignment::sweep(res_vars, self.table,
+	    	|i, assign| {
+	    		let si = assign.project_and_get_index(self.vars);
+	    		let oi = assign.project_and_get_index(other.vars);
+	    		res_vals[i] *= self.values[si] * other.values[oi];
+	    	}
+	    );
 
 		Factor::new(res_vars, self.table, res_vals)
 	}
@@ -226,24 +222,17 @@ impl<'r> Factor<'r> {
 	pub fn multiply_many(&self, others: &'r [&'r Factor]) -> Factor<'r> {
 		let res_vars = self.union_vars_many(others);
 		let mut res_vals = std::vec::from_elem(self.table.vars_cardinality(res_vars), 1.0);
-		// have to create a new block here to avoid problems with borrowing of 
-		// res_vars to create the assignment
-		{
-			let mut assign = Assignment::zero(res_vars, self.table);
 
-			for i in range(0, res_vals.len()) {
-		    	//let si = self.project_assignment_get_index(assign, res_vars, self.vars);
-			    let si = assign.project_and_get_index(self.vars);
+		Assignment::sweep(res_vars, self.table,
+	    	|i, assign| {
+	    		let si = assign.project_and_get_index(self.vars);
 			    res_vals[i] *= self.values[si];
 			    for f in others.iter() {
-				    //let oi = self.project_assignment_get_index(assign, res_vars, f.vars);
 				    let oi = assign.project_and_get_index(f.vars);
 				    res_vals[i] *= f.values[oi];
 			    }
-			    //self.next_assignment_vars(assign, res_vars);
-			    assign.next();
-		    }
-	    }
+	    	}
+	    );
 
 		Factor::new(res_vars, self.table, res_vals)
 	}

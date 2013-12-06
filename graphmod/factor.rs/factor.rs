@@ -120,13 +120,7 @@ impl<'r> Factor<'r> {
 		let mut assign = zero_vector_uint(self.vars.len());
 
 		for i in range(0, self.values.len()) {
-			// TODO: change to use assignment_to_index?
-			let (ix, _) = 
-			    assign.iter()
-			        .zip(self.vars.iter())
-			        .filter(|&(_, var)| res_vars.contains(var))
-			        .map(|(val, var)| (val, self.table.var_cardinality(*var)))			        
-			        .fold((0, 1), |(sum, cs), (val, c2)| (sum + val * cs, c2 * cs));
+			let ix = self.project_assignment_get_index(assign, self.vars, res_vars);
 			
 			res_vals[ix] += self.values[i];
 			self.next_assignment(assign);
@@ -145,8 +139,8 @@ impl<'r> Factor<'r> {
 		for i in range(0, res_vals.len()) {
 			// project the assignment to both factors and get their values,
 			// multiply values by the current value
-			let si = 0; // TODO
-			let oi = 0; // TODO
+			let si = self.project_assignment_get_index(assign, res_vars, self.vars);
+			let oi = self.project_assignment_get_index(assign, res_vars, other.vars);
 			res_vals[i] *= self.values[si] * other.values[oi];
 			self.next_assignment_vars(assign, res_vars);
 		}
@@ -169,11 +163,21 @@ impl<'r> Factor<'r> {
 
 	fn assignment_to_index(&self, assign: &[Value]) -> uint {
 		assert_eq!(assign.len(), self.vars.len());
-		let (res, _) = 
+		// TODO: inefficient
+		self.project_assignment_get_index(assign, self.vars, self.vars)
+	}
+
+	/// project assignment assign from from_vars to a smaller set of variables
+	/// to_vars, and return a value index for the resulting assignment
+	fn project_assignment_get_index(&self, assign: &[Value], from_vars: &[Var], 
+		                            to_vars: &[Var]) -> uint {
+		let (ix, _) = 
 		    assign.iter()
-		        .zip(self.vars.iter().map(|&v| self.table.var_cardinality(v)))
-		        .fold((0, 1), |(sum, cs), (val, c2)| (sum + val * cs, c2 * cs));
-		res
+			    .zip(from_vars.iter())
+			    .filter(|&(_, var)| to_vars.contains(var))
+			    .map(|(val, var)| (val, self.table.var_cardinality(*var)))			        
+			    .fold((0, 1), |(sum, cs), (val, c2)| (sum + val * cs, c2 * cs));
+		ix
 	}
 
 	#[inline]
@@ -315,6 +319,32 @@ mod tests {
 		assert_eq!(f3_1.vars.len(), 3);
 		assert_eq!(f3_1.values.len(), 8);
 		assert_eq!(f3_1.values, ~[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]);
+	}
+
+	#[test]
+	fn test_multiply() {
+		let table = get_symb_table_3();
+		let f1_1 = Factor::new(~[0, 1], &table,
+			                 ~[0.5, 0.5, 0.5, 0.5]);
+		let f1_2 = Factor::new(~[1, 2], &table,
+			                 ~[0.5, 0.5, 0.5, 0.5]);
+		let fm1 = f1_1.multiply(&f1_2);
+		assert_eq!(fm1.vars.len(), 3);
+		assert_eq!(fm1.values.len(), 8);
+		assert_eq!(fm1.values, ~[0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]);
+
+		let f2_1 = Factor::new(~[0, 1, 2], &table,
+			                 ~[0.95, 0.05, 0.9, 0.1, 0.8, 0.2, 0.0, 1.0]);
+		let f2_2 = Factor::new(~[2, 3], &table,
+			                 ~[0.448, 0.192, 0.112, 0.248]);
+		let fm2 = f2_1.multiply(&f2_2);
+		assert_eq!(fm2.vars.len(), 4);
+		assert_eq!(fm2.vars, ~[0, 1, 2, 3]);
+		assert_eq!(fm2.values.len(), 16);
+		assert_eq!(fm2.values, ~[0.4256, 0.05 * 0.448, 0.9 * 0.448, 0.1 * 0.448,
+			                     0.8 * 0.192, 0.2 * 0.192, 0.0, 0.192,
+			                     0.95 * 0.112, 0.05 * 0.112, 0.9 * 0.112, 0.1 * 0.112,
+			                     0.8 * 0.248, 0.2 * 0.248, 0.0, 0.248]);
 	}
 
 	#[test]

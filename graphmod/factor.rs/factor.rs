@@ -92,7 +92,60 @@ struct VarSpec {
 /// A value for a discrete variable is just an index into the list of values
 type Value = uint;
 
-type Assignment = ~[(Var, Value)];
+/// An assignment related to a set of variables 
+// TODO: could be "Assignments", a collection of possible assignments
+// for the variables vars; define an iterator over it (next())
+struct Assignment<'r> {
+	vars: &'r [Var],
+	table: &'r HashSymbTable,
+	values: ~[Value]
+}
+
+impl<'r> Assignment<'r> {
+	fn zero(vars: &'r [Var], table: &'r HashSymbTable) -> Assignment<'r> {
+		let res_vals = zero_vector_uint(vars.len());
+		Assignment { vars: vars, table: table, values: res_vals }
+	}
+
+	fn from_index(vars: &'r [Var], table: &'r HashSymbTable, ix: uint) -> Assignment<'r> {
+		let mut res = std::vec::with_capacity(vars.len());
+		let mut c = ix;
+		for i in range(0, vars.len()) {
+			let card = table.var_cardinality(vars[i]);
+			res.push(c % card);
+			c = c / card;
+		}
+		
+		Assignment { vars: vars, table: table, values: res }
+	}
+
+	/// project assignment to a smaller set of variables
+	/// to_vars, and return a value index for the resulting assignment
+	fn project_and_get_index(&self, to_vars: &[Var]) -> uint {
+		let (ix, _) = 
+		    self.values.iter()
+			    .zip(self.vars.iter())
+			    .filter(|&(_, var)| to_vars.contains(var))
+			    .map(|(val, var)| (val, self.table.var_cardinality(*var)))			        
+			    .fold((0, 1), |(sum, cs), (val, c2)| (sum + val * cs, c2 * cs));
+		ix
+	}
+
+	fn to_index(&self) -> uint {
+		// TODO: inefficient
+		self.project_and_get_index(self.vars)
+	}
+
+	fn next(&mut self) {
+	    for i in range(0, self.values.len()) {
+			let v = self.vars[i];
+			self.values[i] = (self.values[i] + 1) % self.table.var_cardinality(v);
+			if self.values[i] != 0 {
+				break;
+			}
+		}	
+	}
+}
 
 struct Factor<'r> {
 	vars: ~[Var],
@@ -117,13 +170,16 @@ impl<'r> Factor<'r> {
 	pub fn marginalize_vars(&self, vars: &[Var]) -> Factor<'r> {
 		let res_vars = self.sum_factor_vars(vars);
 		let mut res_vals = zero_vector_f64(self.card_vars(res_vars));
-		let mut assign = zero_vector_uint(self.vars.len());
+		//let mut assign = zero_vector_uint(self.vars.len());
+		let mut assign = Assignment::zero(self.vars, self.table);
 
 		for i in range(0, self.values.len()) {
-			let ix = self.project_assignment_get_index(assign, self.vars, res_vars);
+			//let ix = self.project_assignment_get_index(assign, self.vars, res_vars);
+			let ix = assign.project_and_get_index(res_vars);
 			
 			res_vals[ix] += self.values[i];
-			self.next_assignment(assign);
+			//self.next_assignment(assign);
+			assign.next();
 		}
 
 		Factor::new(res_vars, self.table, res_vals)
@@ -134,16 +190,20 @@ impl<'r> Factor<'r> {
 	pub fn multiply(&self, other: &'r Factor) -> Factor<'r> {
 		let res_vars = self.union_vars(other);
 		let mut res_vals = std::vec::from_elem(self.card_vars(res_vars), 1.0);
-		let mut assign = zero_vector_uint(res_vars.len());
+		// have to create a new block here to avoid problems with borrowing of 
+		// res_vars to create the assignment
+		{
+			let mut assign = Assignment::zero(res_vars, self.table);
 
-		for i in range(0, res_vals.len()) {
-			// project the assignment to both factors and get their values,
-			// multiply values by the current value
-			let si = self.project_assignment_get_index(assign, res_vars, self.vars);
-			let oi = self.project_assignment_get_index(assign, res_vars, other.vars);
-			res_vals[i] *= self.values[si] * other.values[oi];
-			self.next_assignment_vars(assign, res_vars);
-		}
+			for i in range(0, res_vals.len()) {
+			    // project the assignment to both factors and get their values,
+			    // multiply values by the current value
+			    let si = assign.project_and_get_index(self.vars);
+			    let oi = assign.project_and_get_index(other.vars);
+			    res_vals[i] *= self.values[si] * other.values[oi];
+			    assign.next();
+		    }
+	    }
 
 		Factor::new(res_vars, self.table, res_vals)
 	}
@@ -151,67 +211,29 @@ impl<'r> Factor<'r> {
 	pub fn multiply_many(&self, others: &'r [&'r Factor]) -> Factor<'r> {
 		let res_vars = self.union_vars_many(others);
 		let mut res_vals = std::vec::from_elem(self.card_vars(res_vars), 1.0);
-		let mut assign = zero_vector_uint(res_vars.len());
+		// have to create a new block here to avoid problems with borrowing of 
+		// res_vars to create the assignment
+		{
+			let mut assign = Assignment::zero(res_vars, self.table);
 
-		for i in range(0, res_vals.len()) {
-			let si = self.project_assignment_get_index(assign, res_vars, self.vars);
-			res_vals[i] *= self.values[si];
-			for f in others.iter() {
-				let oi = self.project_assignment_get_index(assign, res_vars, f.vars);
-				res_vals[i] *= f.values[oi];
-			}
-			self.next_assignment_vars(assign, res_vars);
-		}
+			for i in range(0, res_vals.len()) {
+		    	//let si = self.project_assignment_get_index(assign, res_vars, self.vars);
+			    let si = assign.project_and_get_index(self.vars);
+			    res_vals[i] *= self.values[si];
+			    for f in others.iter() {
+				    //let oi = self.project_assignment_get_index(assign, res_vars, f.vars);
+				    let oi = assign.project_and_get_index(f.vars);
+				    res_vals[i] *= f.values[oi];
+			    }
+			    //self.next_assignment_vars(assign, res_vars);
+			    assign.next();
+		    }
+	    }
 
 		Factor::new(res_vars, self.table, res_vals)
 	}
 
 	// --- private methods
-
-	fn index_to_assignment(&self, ix: uint) -> ~[Value] {
-		let mut res = std::vec::with_capacity(self.vars.len());
-		let mut c = ix;
-		for i in range(0, self.vars.len()) {
-			let card = self.table.var_cardinality(self.vars[i]);
-			res.push(c % card);
-			c = c / card;
-		}
-		res
-	}
-
-	fn assignment_to_index(&self, assign: &[Value]) -> uint {
-		assert_eq!(assign.len(), self.vars.len());
-		// TODO: inefficient
-		self.project_assignment_get_index(assign, self.vars, self.vars)
-	}
-
-	/// project assignment assign from from_vars to a smaller set of variables
-	/// to_vars, and return a value index for the resulting assignment
-	fn project_assignment_get_index(&self, assign: &[Value], from_vars: &[Var], 
-		                            to_vars: &[Var]) -> uint {
-		let (ix, _) = 
-		    assign.iter()
-			    .zip(from_vars.iter())
-			    .filter(|&(_, var)| to_vars.contains(var))
-			    .map(|(val, var)| (val, self.table.var_cardinality(*var)))			        
-			    .fold((0, 1), |(sum, cs), (val, c2)| (sum + val * cs, c2 * cs));
-		ix
-	}
-
-	#[inline]
-	fn next_assignment(&self, assign: &mut [uint]) {
-		self.next_assignment_vars(assign, self.vars)
-	}
-
-	fn next_assignment_vars(&self, assign: &mut [uint], vars: &[Var]) {
-	    for i in range(0, assign.len()) {
-			let v = vars[i];
-			assign[i] = (assign[i] + 1) % self.table.var_cardinality(v);
-			if assign[i] != 0 {
-				break;
-			}
-		}	
-	}
 
 	/// Returns the indices of variables in vars among the factor variables
 	fn vars_indices(&self, vars: &[Var]) -> ~[uint] {  // TODO: remove?
@@ -268,6 +290,7 @@ fn zero_vector_uint(n: uint) -> ~[uint] {
 #[cfg(test)]
 mod tests {
 	use super::Factor;
+	use super::Assignment;
 	use super::HashSymbTable;
 
 	#[inline]
@@ -401,62 +424,88 @@ mod tests {
 	#[test]
 	fn test_index_to_assignment() {
 		let table = get_symb_table_1();
-		let f1 = get_test_factor_1(&table);
-		assert_eq!(f1.index_to_assignment(0), ~[0, 0, 0]);
-		assert_eq!(f1.index_to_assignment(1), ~[1, 0, 0]);
-		assert_eq!(f1.index_to_assignment(2), ~[0, 1, 0]);
-		assert_eq!(f1.index_to_assignment(3), ~[1, 1, 0]);
-		assert_eq!(f1.index_to_assignment(4), ~[0, 0, 1]);
-		assert_eq!(f1.index_to_assignment(7), ~[1, 1, 1]);
+		let vars = [0, 1, 2];
+		let a1 = Assignment::from_index(vars, &table, 0u);
+		assert_eq!(a1.values, ~[0, 0, 0]);
+		let a2 = Assignment::from_index(vars, &table, 1u);
+		assert_eq!(a2.values, ~[1, 0, 0]);
+		let a3 = Assignment::from_index(vars, &table, 2u);
+		assert_eq!(a3.values, ~[0, 1, 0]);
+		let a4 = Assignment::from_index(vars, &table, 3u);
+		assert_eq!(a4.values, ~[1, 1, 0]);
+		let a5 = Assignment::from_index(vars, &table, 4u);
+		assert_eq!(a5.values, ~[0, 0, 1]);
+		let a6 = Assignment::from_index(vars, &table, 7u);
+		assert_eq!(a6.values, ~[1, 1, 1]);
 
 		let table2 = get_symb_table_2();
-		let f2 = get_test_factor_2(&table2);
-		assert_eq!(f2.index_to_assignment(0),  ~[0, 0, 0]);
-		assert_eq!(f2.index_to_assignment(1),  ~[1, 0, 0]);
-		assert_eq!(f2.index_to_assignment(2),  ~[0, 1, 0]);
-		assert_eq!(f2.index_to_assignment(3),  ~[1, 1, 0]);
-		assert_eq!(f2.index_to_assignment(4),  ~[0, 2, 0]);
-		assert_eq!(f2.index_to_assignment(5),  ~[1, 2, 0]);
-		assert_eq!(f2.index_to_assignment(6),  ~[0, 0, 1]);
-		assert_eq!(f2.index_to_assignment(11), ~[1, 2, 1]);
+		let a7 = Assignment::from_index(vars, &table2, 0u);
+		assert_eq!(a7.values,  ~[0, 0, 0]);
+		let a8 = Assignment::from_index(vars, &table2, 1u);
+		assert_eq!(a8.values,  ~[1, 0, 0]);
+		let a9 = Assignment::from_index(vars, &table2, 2u);
+		assert_eq!(a9.values,  ~[0, 1, 0]);
+		let a10 = Assignment::from_index(vars, &table2, 3u);
+		assert_eq!(a10.values,  ~[1, 1, 0]);
+		let a11 = Assignment::from_index(vars, &table2, 4u);
+		assert_eq!(a11.values,  ~[0, 2, 0]);
+		let a12 = Assignment::from_index(vars, &table2, 5u);
+		assert_eq!(a12.values,  ~[1, 2, 0]);
+		let a13 = Assignment::from_index(vars, &table2, 6u);
+		assert_eq!(a13.values,  ~[0, 0, 1]);
+		let a14 = Assignment::from_index(vars, &table2, 11u);
+		assert_eq!(a14.values, ~[1, 2, 1]);
 	}
 
 	#[test]
 	fn test_assignment_to_index() {
 		let table = get_symb_table_1();
-		let f1 = get_test_factor_1(&table);
-		assert_eq!(f1.assignment_to_index([0, 0, 0]), 0u);
-		assert_eq!(f1.assignment_to_index([1, 0, 0]), 1u);
-		assert_eq!(f1.assignment_to_index([0, 1, 0]), 2u);
-		assert_eq!(f1.assignment_to_index([0, 0, 1]), 4u);
-		assert_eq!(f1.assignment_to_index([0, 1, 1]), 6u);
-		assert_eq!(f1.assignment_to_index([1, 1, 1]), 7u);
+		let vars = [0, 1, 2];
+		let mut assign = Assignment::zero(vars, &table);
+		assert_eq!(assign.to_index(), 0u);
+		assign.next();
+		assert_eq!(assign.to_index(), 1u);
+		assign.next();
+		assert_eq!(assign.to_index(), 2u);
+		assign.values = ~[0, 0, 1];
+		assert_eq!(assign.to_index(), 4u);
+		assign.values = ~[0, 1, 1];
+		assert_eq!(assign.to_index(), 6u);
+		assign.next();
+		assert_eq!(assign.to_index(), 7u);
 
 		let table2 = get_symb_table_2();
-		let f2 = get_test_factor_2(&table2);
-		assert_eq!(f2.assignment_to_index([0, 0, 0]), 0u);
-		assert_eq!(f2.assignment_to_index([1, 0, 0]), 1u);
-		assert_eq!(f2.assignment_to_index([0, 1, 0]), 2u);
-		assert_eq!(f2.assignment_to_index([0, 2, 0]), 4u);
-		assert_eq!(f2.assignment_to_index([0, 1, 1]), 8u);
-		assert_eq!(f2.assignment_to_index([1, 1, 1]), 9u);
-		assert_eq!(f2.assignment_to_index([0, 2, 1]), 10u);
-		assert_eq!(f2.assignment_to_index([1, 2, 1]), 11u);
+		let mut assign2 = Assignment::zero(vars, &table2);
+		assert_eq!(assign2.to_index(), 0u);
+		assign2.next();
+		assert_eq!(assign2.to_index(), 1u);
+		assign2.next();
+		assert_eq!(assign2.to_index(), 2u);
+		assign2.values = ~[0, 2, 0];
+		assert_eq!(assign2.to_index(), 4u);
+		assign2.values = ~[0, 1, 1];
+		assert_eq!(assign2.to_index(), 8u);
+		assign2.next();
+		assert_eq!(assign2.to_index(), 9u);
+		assign2.values = ~[0, 2, 1];
+		assert_eq!(assign2.to_index(), 10u);
+		assign2.next();
+		assert_eq!(assign2.to_index(), 11u);
 	}
 
 	#[test]
-	fn test_next_assignment() {
+	fn test_assignment_next() {
 		let table = get_symb_table_1();
-		let f1 = get_test_factor_1(&table);
-		let mut assign = [0u, 0u, 0u];
-		f1.next_assignment(assign);
-		assert_eq!(assign, [1u, 0u, 0u]);
-		f1.next_assignment(assign);
-		assert_eq!(assign, [0u, 1u, 0u]);
-		f1.next_assignment(assign);
-		assert_eq!(assign, [1u, 1u, 0u]);
-		f1.next_assignment(assign);
-		assert_eq!(assign, [0u, 0u, 1u]);
+		let vars = ~[0, 1, 2];
+		let mut assign = Assignment::zero(vars, &table);
+		assign.next();
+		assert_eq!(assign.values, ~[1u, 0u, 0u]);
+		assign.next();
+		assert_eq!(assign.values, ~[0u, 1u, 0u]);
+		assign.next();
+		assert_eq!(assign.values, ~[1u, 1u, 0u]);
+		assign.next();
+		assert_eq!(assign.values, ~[0u, 0u, 1u]);
 	}
 
 	#[test]

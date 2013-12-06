@@ -148,6 +148,24 @@ impl<'r> Factor<'r> {
 		Factor::new(res_vars, self.table, res_vals)
 	}
 
+	pub fn multiply_many(&self, others: &'r [&'r Factor]) -> Factor<'r> {
+		let res_vars = self.union_vars_many(others);
+		let mut res_vals = std::vec::from_elem(self.card_vars(res_vars), 1.0);
+		let mut assign = zero_vector_uint(res_vars.len());
+
+		for i in range(0, res_vals.len()) {
+			let si = self.project_assignment_get_index(assign, res_vars, self.vars);
+			res_vals[i] *= self.values[si];
+			for f in others.iter() {
+				let oi = self.project_assignment_get_index(assign, res_vars, f.vars);
+				res_vals[i] *= f.values[oi];
+			}
+			self.next_assignment_vars(assign, res_vars);
+		}
+
+		Factor::new(res_vars, self.table, res_vals)
+	}
+
 	// --- private methods
 
 	fn index_to_assignment(&self, ix: uint) -> ~[Value] {
@@ -211,16 +229,30 @@ impl<'r> Factor<'r> {
 	}
 
 	/// Returns the union of the variables in self and other
+	#[inline]
 	fn union_vars(&self, other: &'r Factor) -> ~[Var] {
-		self.vars.iter()
-		    .chain(
-		        other.vars.iter().filter(|&v| !self.vars.contains(v)))
-		    .map(|&x| x.clone())
-		    .collect()
+		var_union(self.vars, other.vars)
+	}
+
+	fn union_vars_many(&self, others: &'r [&'r Factor]) -> ~[Var] {
+		let mut res_vars = self.vars.clone();
+		for f in others.iter() {
+			// PERF: many intermediate vectors generated
+			res_vars = var_union(res_vars, f.vars); 
+		}
+		res_vars
 	}
 }
 
 // --- utilities ----------------------------------------------------
+
+fn var_union(v1: &[Var], v2: &[Var]) -> ~[Var] {
+	v1.iter()
+		.chain(
+		    v2.iter().filter(|&v| !v1.contains(v)))
+		.map(|&v| v.clone())
+		.collect()
+}
 
 #[inline]
 fn zero_vector_f64(n: uint) -> ~[f64] {
@@ -348,6 +380,25 @@ mod tests {
 	}
 
 	#[test]
+	fn test_multiply_many() {
+		let table = get_symb_table_3();
+		let f1_1 = Factor::new(~[0, 1], &table,
+			                   ~[0.5, 0.5, 0.5, 0.5]);
+		let f1_2 = Factor::new(~[1, 2], &table,
+			                   ~[0.4, 0.2, 0.2, 0.4]);
+		let f1_3 = Factor::new(~[2, 3], &table,
+			                   ~[0.1, 0.3, 0.5, 0.4]);
+		let factors = [&f1_2, &f1_3];
+		let fm1 = f1_1.multiply_many(factors);
+		assert_eq!(fm1.vars.len(), 4);
+		assert_eq!(fm1.values.len(), 16);
+		assert_eq!(fm1.values, ~[0.5 * 0.4 * 0.1, 0.5 * 0.4 * 0.1, 0.5 * 0.2 * 0.1, 0.5 * 0.2 * 0.1,
+								 0.5 * 0.2 * 0.3, 0.5 * 0.2 * 0.3, 0.5 * 0.4 * 0.3, 0.5 * 0.4 * 0.3,
+								 0.5 * 0.4 * 0.5, 0.5 * 0.4 * 0.5, 0.5 * 0.2 * 0.5, 0.5 * 0.2 * 0.5,
+								 0.5 * 0.2 * 0.4, 0.5 * 0.2 * 0.4, 0.5 * 0.4 * 0.4, 0.5 * 0.4 * 0.4]);
+	}
+
+	#[test]
 	fn test_index_to_assignment() {
 		let table = get_symb_table_1();
 		let f1 = get_test_factor_1(&table);
@@ -468,4 +519,25 @@ mod tests {
 		assert_eq!(f1.union_vars(&f4), ~[0, 1]);
 		assert_eq!(f2.union_vars(&f4), ~[1, 2]);
 	}
+
+    #[test]
+	fn test_union_vars_many() {
+		let table = get_symb_table_1();
+		let f1 = Factor::new(~[0], &table,
+			                 ~[0.25, 0.25]);
+		let f2 = Factor::new(~[2], &table,
+			                 ~[0.25, 0.25]);
+		let f3 = Factor::new(~[0, 1], &table,
+			                 ~[0.25, 0.25, 0.25, 0.25]);
+		let f4 = Factor::new(~[1], &table,
+			                 ~[0.25, 0.25]);
+
+		assert_eq!(f1.union_vars_many([&f2, &f4]), ~[0, 2, 1]);
+		assert_eq!(f1.union_vars_many([&f4, &f2]), ~[0, 1, 2]);
+		assert_eq!(f2.union_vars_many([&f1, &f4]), ~[2, 0, 1]);
+		assert_eq!(f3.union_vars_many([&f2]), ~[0, 1, 2]);
+		assert_eq!(f3.union_vars_many([&f2, &f4]), ~[0, 1, 2]);
+		assert_eq!(f1.union_vars_many([&f3, &f4, &f2]), ~[0, 1, 2]);
+	}
+
 }

@@ -100,8 +100,6 @@ impl<'r> SymbTable<'r> for HashSymbTable {
 }
 
 /// An assignment related to a set of variables 
-// TODO: could be "Assignments", a collection of possible assignments
-// for the variables vars; define an iterator over it (next())
 struct Assignment<'r> {
 	vars: &'r [Var],
 	table: &'r HashSymbTable,

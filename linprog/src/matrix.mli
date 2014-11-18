@@ -17,3 +17,6 @@ val get : t -> int -> int -> float
     column [j] of matrix [m]. *)
 val set : t -> int -> int -> float -> unit
 
+(** Reads a matrix from an input channel. *)
+val read : in_channel -> rows:int -> cols: int -> t 
+

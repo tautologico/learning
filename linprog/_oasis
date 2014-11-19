@@ -1,0 +1,16 @@
+OASISFormat:  0.4
+Name:         Linprog
+Version:      0.0
+Synopsis:     Very simple LP simplex solver
+Authors:      Andrei Formiga
+License:      MIT
+Plugins:      DevFiles (0.4), META (0.4)
+BuildTools:   ocamlbuild
+
+Library linprog
+  Path:           src
+  Modules:        Util, Matrix, Dict
+  BuildDepends:   
+  CompiledObject: best
+  NativeOpt:      -inline 20
+

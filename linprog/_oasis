@@ -14,3 +14,15 @@ Library linprog
   CompiledObject: best
   NativeOpt:      -inline 20
 
+Executable test
+  Path:           test
+  MainIs:         test.ml
+  Install:        false
+  Build$:         flag(tests)
+  BuildDepends:   oUnit (>= 2.0.0), Linprog
+  CompiledObject: best
+  ByteOpt:        
+  NativeOpt:      -inline 20
+
+Test main
+  Command:        $test

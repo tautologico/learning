@@ -27,6 +27,21 @@ let analyze_entering d =
   |> Util.lst_foldl1 (fun (x1,i1) (x2,i2) -> if x2 < x1 then (x2,i2) else (x1,i1))
   |> Util.lift_option snd 
 
+let find_min_pos_index dict v = 
+  let select_pair (i1,x1) (i2,x2) = 
+    if x1 < x2 then (i1,x1) 
+    else if x1 <= x2 && i1 < i2 then (i1,x1)
+    else (i2,x2)
+  in
+  List.mapi (fun i x -> (i, x)) v 
+  |> List.filter (fun (_,x) -> x >= 0.0)
+  |> List.map (fun (i,x) -> (dict.basic.(i), x))
+  |> Util.lst_foldl1 select_pair 
+
+let analyze_leaving d enter = 
+  Array.to_list d.assign 
+  |> List.mapi (fun i x -> -. x /. (Matrix.get d.a i enter))
+  |> find_min_pos_index d
 
 
 

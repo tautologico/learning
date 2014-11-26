@@ -9,6 +9,12 @@ type t = {
   obj : float array;
 }
 
+type pivot_step = { 
+  entering : int;
+  leaving : int;
+  objval : float
+}
+
 let read ch = 
   let m = Util.read_int ch in
   let n = Util.read_int ch in
@@ -43,7 +49,25 @@ let analyze_leaving d enter =
   |> List.mapi (fun i x -> -. x /. (Matrix.get d.a i enter))
   |> find_min_pos_index d
 
+let read_pivot_step ic = 
+  let first = Scanf.fscanf ic " %s " (fun s -> s) in
+  if first = "UNBOUNDED" then None
+  else 
+    let enter = Scanf.sscanf first "%d" (fun i -> i) in
+    Scanf.fscanf ic " %d\n %f " 
+                 (fun leave obj -> 
+                  Some { entering = enter; leaving = leave; objval = obj })
+    
+let show_pivot_step_opt ops = 
+  match ops with
+  | None -> "UNBOUNDED"
+  | Some ps -> Printf.sprintf "%d\n%d\n%5.3f\n" ps.entering ps.leaving ps.objval
 
-
-  
-  
+let calc_pivot_step dict = 
+  match analyze_entering dict with
+  | None -> None
+  | Some enter -> 
+     analyze_leaving dict enter 
+     |> Util.lift_option (fun (v, c) -> 
+                          { entering = dict.nbasic.(enter); leaving = v;
+                            objval = c *. dict.obj.(enter+1) +. dict.obj.(0) })

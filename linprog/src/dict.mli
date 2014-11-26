@@ -10,3 +10,5 @@ type t = {
 
 val read : in_channel -> t 
 
+val analyze_entering : t -> int option 
+

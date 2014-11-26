@@ -19,4 +19,16 @@ let read ch =
   let obj = Util.read_vector ch (n+1) in
   { m; n; basic; nbasic; assign; a; obj }
 
+let analyze_entering d = 
+  Array.mapi (fun i x -> (x,i-1)) d.obj
+  |> Array.to_list
+  |> List.filter (fun (x,i) -> x > 0.0 && i >= 0)
+  |> List.map (fun (_,i) -> d.nbasic.(i), i)
+  |> Util.lst_foldl1 (fun (x1,i1) (x2,i2) -> if x2 < x1 then (x2,i2) else (x1,i1))
+  |> Util.lift_option snd 
 
+
+
+
+  
+  

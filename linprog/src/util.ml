@@ -27,6 +27,9 @@ let lift_eq_option cmp o1 o2 =
   | Some x1, Some x2 -> cmp x1 x2 
   | _ -> false
 
+let float_eq f1 f2 tol = 
+  abs_float (f1 -. f2) <= tol 
+
 let range_lst n1 n2 = 
   let rec loop i = 
     if i > n2 then [] else i :: loop (i+1) in

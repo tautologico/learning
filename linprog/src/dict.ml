@@ -84,12 +84,8 @@ let calc_pivot_step dict =
                           { entering = dict.nbasic.(enter); leaving = v;
                             objval = c *. dict.obj.(enter+1) +. dict.obj.(0) })
 
-let eq_tolerance f1 f2 tol = 
-  abs_float (f1 -. f2) <= tol 
-
 let eq_pivot_step ps1 ps2 = 
   ps1.entering = ps2.entering 
   && ps1.leaving = ps2.leaving
-  && eq_tolerance ps1.objval ps2.objval 0.0001
-
+  && Util.float_eq ps1.objval ps2.objval 0.0001
 

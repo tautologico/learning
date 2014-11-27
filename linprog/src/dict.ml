@@ -89,3 +89,19 @@ let eq_pivot_step ps1 ps2 =
   && ps1.leaving = ps2.leaving
   && Util.float_eq ps1.objval ps2.objval 0.0001
 
+let write_dict oc dict = 
+  let write_basis_line i x = 
+    Printf.fprintf oc "x%u | %05.4f " x dict.assign.(i);
+    Array.iteri (fun j y -> 
+                 Printf.fprintf oc "%05.4fx%u " (Matrix.get dict.a i j) y) 
+                dict.nbasic;
+    Printf.fprintf oc "\n"
+  in
+  Array.iteri write_basis_line dict.basic;
+  Printf.fprintf oc "--------------------------------\n";
+  Printf.fprintf oc "z  | %05.4f " dict.obj.(0);
+  Array.iteri (fun i x -> Printf.fprintf oc "%05.4fx%u " dict.obj.(i+1) x) dict.nbasic;
+  Printf.fprintf oc "\n"
+
+let print_dict dict = 
+  write_dict stdout dict 

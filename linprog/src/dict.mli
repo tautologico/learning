@@ -34,3 +34,8 @@ val show_pivot_step_opt : pivot_step option -> string
 val calc_pivot_step : t -> pivot_step option 
 
 val eq_pivot_step : pivot_step -> pivot_step -> bool 
+
+val write_dict : out_channel -> t -> unit
+
+val print_dict : t -> unit
+

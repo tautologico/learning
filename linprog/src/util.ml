@@ -20,3 +20,14 @@ let lift_option f opt =
   match opt with
   | None -> None
   | Some x -> Some (f x) 
+
+let lift_eq_option cmp o1 o2 = 
+  match o1, o2 with 
+  | None, None -> true
+  | Some x1, Some x2 -> cmp x1 x2 
+  | _ -> false
+
+let range_lst n1 n2 = 
+  let rec loop i = 
+    if i > n2 then [] else i :: loop (i+1) in
+  loop n1 

@@ -19,14 +19,11 @@ let test_read_dict ctxt =
   assert_equal ~msg:"4th nonbasic var" d.nbasic.(3) 7
 
 let test_entering ctxt = 
-  let f = open_in "test/part1/dict1" in
-  let d = Dict.read f in 
+  let d = Dict.read_file "test/part1/dict1" in
   assert_equal (Dict.analyze_entering d) (Some 1);
-  let f5 = open_in "test/part1/dict5" in
-  let d5 = Dict.read f5 in
+  let d5 = Dict.read_file "test/part1/dict5" in
   assert_equal (Dict.analyze_entering d5) (Some 1);
-  let f6 = open_in "test/part1/dict6" in
-  let d6 = Dict.read f6 in
+  let d6 = Dict.read_file "test/part1/dict6" in
   assert_equal (Dict.analyze_entering d6) (Some 0)
 
 let test_find_min_pos ctxt = 
@@ -43,15 +40,12 @@ let test_find_min_pos ctxt =
   assert_equal (find_min_pos_index d v4) (Some (5, 0.003))
 
 let test_leaving ctxt = 
-  let f = open_in "test/part1/dict1" in
-  let d = Dict.read f in 
+  let d = Dict.read_file "test/part1/dict1" in
   assert_equal (Dict.analyze_entering d) (Some 1);
   assert_equal (Dict.analyze_leaving d 1) (Some (3, 3.0));
-  let f5 = open_in "test/part1/dict5" in
-  let d5 = Dict.read f5 in
-  assert_equal (Dict.analyze_entering d5) (Some 1);
-  let f6 = open_in "test/part1/dict6" in
-  let d6 = Dict.read f6 in
+  let d5 = Dict.read_file "test/part1/dict5" in
+  assert_equal (Dict.analyze_entering d5) (Some 1); 
+  let d6 = Dict.read_file "test/part1/dict6" in
   assert_equal (Dict.analyze_entering d6) (Some 0)
 
 let suite = 
@@ -64,5 +58,25 @@ let suite =
       "leaving var analysis" >:: test_leaving
     ]
 
+let test_pivot_part1 i ctxt = 
+  let dict_file = Printf.sprintf "test/part1/dict%d" i in
+  let ps_file = Printf.sprintf "test/part1/dict%d.output" i in 
+  let dict = Dict.read_file dict_file in
+  let exp_ps = Dict.read_pivot_step_file ps_file in
+  let calc_ps = Dict.calc_pivot_step dict in
+  assert_equal ~cmp:(Util.lift_eq_option Dict.eq_pivot_step) exp_ps calc_ps
+
+let pivot_part1_suite = 
+  let test_name i = Printf.sprintf "dict%d" i in
+  let suite_list = 
+    List.map 
+      (fun i -> (test_name i) >:: (test_pivot_part1 i)) 
+      (Util.range_lst 1 10)
+  in
+  "pivot test, part 1" >::: suite_list
+
 let () = 
-  run_test_tt_main suite
+  Printf.printf "Unit tests:\n";
+  run_test_tt_main suite;
+  Printf.printf "pivoting tests, part 1:\n";
+  run_test_tt_main pivot_part1_suite

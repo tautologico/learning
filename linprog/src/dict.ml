@@ -25,6 +25,12 @@ let read ch =
   let obj = Util.read_vector ch (n+1) in
   { m; n; basic; nbasic; assign; a; obj }
 
+let read_file fname = 
+  let f = open_in fname in
+  let d = read f in
+  close_in f;
+  d
+
 let analyze_entering d = 
   Array.mapi (fun i x -> (x,i-1)) d.obj
   |> Array.to_list
@@ -57,6 +63,12 @@ let read_pivot_step ic =
     Scanf.fscanf ic " %d\n %f " 
                  (fun leave obj -> 
                   Some { entering = enter; leaving = leave; objval = obj })
+
+let read_pivot_step_file fname = 
+  let f = open_in fname in
+  let ps = read_pivot_step f in
+  close_in f;
+  ps
     
 let show_pivot_step_opt ops = 
   match ops with
@@ -71,3 +83,13 @@ let calc_pivot_step dict =
      |> Util.lift_option (fun (v, c) -> 
                           { entering = dict.nbasic.(enter); leaving = v;
                             objval = c *. dict.obj.(enter+1) +. dict.obj.(0) })
+
+let eq_tolerance f1 f2 tol = 
+  abs_float (f1 -. f2) <= tol 
+
+let eq_pivot_step ps1 ps2 = 
+  ps1.entering = ps2.entering 
+  && ps1.leaving = ps2.leaving
+  && eq_tolerance ps1.objval ps2.objval 0.0001
+
+

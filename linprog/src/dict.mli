@@ -14,6 +14,15 @@ type pivot_step = {
   objval : float
 }
 
+type pivot_result = FinalDict | UnboundedDict | NormalStep of pivot_step
+
+type solve_result = Unbounded | SolutionFound of int * t
+
+type solution = {
+  steps: int;
+  final_val: float
+}
+
 val read : in_channel -> t 
 
 val read_file : string -> t 
@@ -39,3 +48,8 @@ val write_dict : out_channel -> t -> unit
 
 val print_dict : t -> unit
 
+val read_solution : in_channel -> solution option
+
+val read_solution_file : string -> solution option 
+
+val eq_solution : solution -> solution -> bool 

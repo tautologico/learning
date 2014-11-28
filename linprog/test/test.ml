@@ -48,6 +48,18 @@ let test_leaving ctxt =
   let d6 = Dict.read_file "test/part1/dict6" in
   assert_equal (Dict.analyze_entering d6) (Some 0)
 
+let test_read_solution ctxt = 
+  let cmp = Util.lift_eq_option Dict.eq_solution in 
+  let open Dict in 
+  let sol1 = Dict.read_solution_file "test/part2/dict1.output" in
+  assert_equal ~cmp sol1 (Some { steps = 3; final_val = 7.0 });
+  let sol2 = Dict.read_solution_file "test/part2/dict2.output" in
+  assert_equal ~cmp sol2 (Some { steps = 1; final_val = 4.0 });
+  let sol5 = Dict.read_solution_file "test/part2/dict5.output" in
+  assert_equal ~cmp sol5 (Some { steps = 4; final_val = 60.0 });
+  let sol6 = Dict.read_solution_file "test/part2/dict6.output" in
+  assert_equal sol6 None
+
 let suite = 
   "Unit tests" >:::
     [ 
@@ -55,7 +67,8 @@ let suite =
       "dictionary reading" >:: test_read_dict;
       "find_min_pos" >:: test_find_min_pos;
       "entering var analysis" >:: test_entering;
-      "leaving var analysis" >:: test_leaving
+      "leaving var analysis" >:: test_leaving;
+      "reading expected solution" >:: test_read_solution
     ]
 
 let test_pivot_part1 i ctxt = 
@@ -76,7 +89,7 @@ let pivot_part1_suite =
   "pivot test, part 1" >::: suite_list
 
 let () = 
-  Printf.printf "Unit tests:\n";
+  Printf.printf "# Unit tests:\n";
   run_test_tt_main suite;
-  Printf.printf "pivoting tests, part 1:\n";
+  Printf.printf "\n# pivoting tests, part 1:\n";
   run_test_tt_main pivot_part1_suite

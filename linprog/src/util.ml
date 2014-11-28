@@ -34,3 +34,9 @@ let range_lst n1 n2 =
   let rec loop i = 
     if i > n2 then [] else i :: loop (i+1) in
   loop n1 
+
+let read_val_from_file read_fun fname = 
+  let f = open_in fname in
+  let v = read_fun f in
+  close_in f;
+  v

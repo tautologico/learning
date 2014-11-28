@@ -15,6 +15,15 @@ type pivot_step = {
   objval : float
 }
 
+type pivot_result = FinalDict | UnboundedDict | NormalStep of pivot_step
+
+type solve_result = Unbounded | SolutionFound of int * t
+
+type solution = {
+  steps: int;
+  final_val: float
+}
+
 let read ch = 
   let m = Util.read_int ch in
   let n = Util.read_int ch in
@@ -25,11 +34,7 @@ let read ch =
   let obj = Util.read_vector ch (n+1) in
   { m; n; basic; nbasic; assign; a; obj }
 
-let read_file fname = 
-  let f = open_in fname in
-  let d = read f in
-  close_in f;
-  d
+let read_file = Util.read_val_from_file read
 
 let analyze_entering d = 
   Array.mapi (fun i x -> (x,i-1)) d.obj
@@ -64,12 +69,8 @@ let read_pivot_step ic =
                  (fun leave obj -> 
                   Some { entering = enter; leaving = leave; objval = obj })
 
-let read_pivot_step_file fname = 
-  let f = open_in fname in
-  let ps = read_pivot_step f in
-  close_in f;
-  ps
-    
+let read_pivot_step_file = Util.read_val_from_file read_pivot_step 
+ 
 let show_pivot_step_opt ops = 
   match ops with
   | None -> "UNBOUNDED"
@@ -88,6 +89,21 @@ let eq_pivot_step ps1 ps2 =
   ps1.entering = ps2.entering 
   && ps1.leaving = ps2.leaving
   && Util.float_eq ps1.objval ps2.objval 0.0001
+
+let read_solution ic = 
+  let first = Scanf.fscanf ic " %s " (fun s -> s) in
+  if first = "UNBOUNDED" then None
+  else 
+    let final_val = Scanf.sscanf first " %f " (fun f -> f) in
+    Scanf.fscanf ic " %d " 
+                 (fun steps -> 
+                  Some { steps; final_val })
+
+let read_solution_file = Util.read_val_from_file read_solution
+
+let eq_solution s1 s2 = 
+  s1.steps = s2.steps 
+  && Util.float_eq s1.final_val s2.final_val 0.0001
 
 let write_dict oc dict = 
   let write_basis_line i x = 

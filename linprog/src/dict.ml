@@ -97,8 +97,8 @@ let calc_pivot_step_ix dict =
   | Some enter -> 
      analyze_leaving dict enter 
      |> Util.lift_option (fun (v, c) -> 
-                          { entering = enter; leaving = v;
-                            objval = c *. dict.obj.(enter+1) +. dict.obj.(0) })
+                          { enter_ix = enter; leave_ix = v;
+                            objvalue = c *. dict.obj.(enter+1) +. dict.obj.(0) })
 
 let eq_pivot_step ps1 ps2 = 
   ps1.entering = ps2.entering 
@@ -140,5 +140,50 @@ let print_dict dict =
 let pivot dict psi = 
   let n_basic = Array.copy dict.basic in
   let n_nbasic = Array.copy dict.nbasic in
-  0
+  n_basic.(psi.leave_ix) <- n_nbasic.(psi.enter_ix);
+  n_nbasic.(psi.enter_ix) <- n_basic.(psi.leave_ix);
+
+  (* invert equation for leaving variable *)
+  let n_a = Matrix.copy dict.a in
+  let l_factor = -. (Matrix.get n_a psi.leave_ix psi.enter_ix) in
+  Matrix.set n_a psi.leave_ix psi.enter_ix (-. 1.0);
+  Matrix.transform_column n_a psi.leave_ix (fun x -> x /. l_factor);
+  let n_assign = Array.copy dict.assign in
+  n_assign.(psi.leave_ix) <- n_assign.(psi.leave_ix) /. l_factor; 
+
+  (* adjust other equations *)
+  for r = 0 to (psi.leave_ix-1) do  (* TODO: rewrite to avoid repetition *)
+    let x1 = Matrix.get n_a r psi.enter_ix in
+    for c = 0 to (dict.n-1) do
+      let x2 = Matrix.get n_a psi.leave_ix c in
+      Matrix.set n_a r c ((Matrix.get dict.a r c) +. x1 *. x2)
+    done;
+    let x3 = Matrix.get n_a psi.leave_ix psi.enter_ix in
+    Matrix.set n_a r psi.enter_ix (x1 *. x3);
+    n_assign.(r) <- n_assign.(r) +. x1 *. n_assign.(psi.leave_ix)
+  done;
+
+  for r = (psi.leave_ix+1) to (dict.m-1) do
+    let x1 = Matrix.get dict.a r psi.enter_ix in
+    for c = 0 to (dict.n-1) do 
+      let x2 = Matrix.get n_a psi.leave_ix c in
+      Matrix.set n_a r c ((Matrix.get dict.a r c) +. x1 *. x2)
+    done;
+    let x3 = Matrix.get n_a psi.leave_ix psi.enter_ix in
+    Matrix.set n_a r psi.enter_ix (x1 *. x3);
+    n_assign.(r) <- n_assign.(r) +. x1 *. n_assign.(psi.leave_ix)
+  done;
+
+  (* adjust object function values *)
+  let n_obj = Array.copy dict.obj in
+  n_obj.(0) <- psi.objvalue; 
+  for i = 1 to dict.n do
+    n_obj.(i) <- dict.obj.(i) +. dict.obj.(psi.enter_ix+1) *. (Matrix.get n_a psi.leave_ix (i-1))
+  done;
+  n_obj.(psi.enter_ix+1) <- dict.obj.(psi.enter_ix+1) *. (Matrix.get n_a psi.leave_ix psi.enter_ix);
+
+  (* build new dict *)
+  { m = dict.m; n = dict.n; basic = n_basic; nbasic = n_nbasic;
+    assign = n_assign; a = n_a; obj = n_obj }
+
 

@@ -15,6 +15,12 @@ type pivot_step = {
   objval : float
 }
 
+type pivot_step_ix = { 
+  enter_ix : int;
+  leave_ix : int;
+  objvalue: float
+}
+
 type pivot_result = FinalDict | UnboundedDict | NormalStep of pivot_step
 
 type solve_result = Unbounded | SolutionFound of int * t
@@ -46,13 +52,13 @@ let analyze_entering d =
 
 let find_min_pos_index dict v = 
   let select_pair (i1,x1) (i2,x2) = 
+    let v1, v2 = dict.basic.(i1), dict.basic.(i2) in
     if x1 < x2 then (i1,x1) 
-    else if x1 <= x2 && i1 < i2 then (i1,x1)
+    else if x1 <= x2 && v1 < v2 then (i1,x1)
     else (i2,x2)
   in
   List.mapi (fun i x -> (i, x)) v 
   |> List.filter (fun (_,x) -> x >= 0.0)
-  |> List.map (fun (i,x) -> (dict.basic.(i), x))
   |> Util.lst_foldl1 select_pair 
 
 let analyze_leaving d enter = 
@@ -82,7 +88,16 @@ let calc_pivot_step dict =
   | Some enter -> 
      analyze_leaving dict enter 
      |> Util.lift_option (fun (v, c) -> 
-                          { entering = dict.nbasic.(enter); leaving = v;
+                          { entering = dict.nbasic.(enter); leaving = dict.basic.(v);
+                            objval = c *. dict.obj.(enter+1) +. dict.obj.(0) })
+
+let calc_pivot_step_ix dict = 
+  match analyze_entering dict with
+  | None -> None
+  | Some enter -> 
+     analyze_leaving dict enter 
+     |> Util.lift_option (fun (v, c) -> 
+                          { entering = enter; leaving = v;
                             objval = c *. dict.obj.(enter+1) +. dict.obj.(0) })
 
 let eq_pivot_step ps1 ps2 = 
@@ -121,3 +136,9 @@ let write_dict oc dict =
 
 let print_dict dict = 
   write_dict stdout dict 
+
+let pivot dict psi = 
+  let n_basic = Array.copy dict.basic in
+  let n_nbasic = Array.copy dict.nbasic in
+  0
+

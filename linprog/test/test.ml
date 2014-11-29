@@ -31,18 +31,18 @@ let test_find_min_pos ctxt =
   let d = { m = 6; n = 6; basic = [| 3; 5; 4; 2; 1; 7 |]; nbasic = [||];
             assign = [||]; obj = [||]; a = Matrix.zero ~rows:6 ~cols:6 } in
   let v1 = [1.2; 0.015; -2.3; 4.7; 0.2; 4.4] in
-  assert_equal (find_min_pos_index d v1) (Some (5, 0.015));
+  assert_equal (find_min_pos_index d v1) (Some (1, 0.015));
   let v2 = [-1.3; -1.5; -1.1; -5.5; -4.4; -1.23] in
   assert_equal (find_min_pos_index d v2) None;
   let v3 = [-1.2; 0.003; 4.4; 0.15; 0.003; 6.7] in
-  assert_equal (find_min_pos_index d v3) (Some (1, 0.003));
+  assert_equal (find_min_pos_index d v3) (Some (4, 0.003));
   let v4 = [-1.2; 0.003; 4.4; 0.15; 1.003; 0.003] in
-  assert_equal (find_min_pos_index d v4) (Some (5, 0.003))
+  assert_equal (find_min_pos_index d v4) (Some (1, 0.003))
 
 let test_leaving ctxt = 
   let d = Dict.read_file "test/part1/dict1" in
   assert_equal (Dict.analyze_entering d) (Some 1);
-  assert_equal (Dict.analyze_leaving d 1) (Some (3, 3.0));
+  assert_equal (Dict.analyze_leaving d 1) (Some (1, 3.0));
   let d5 = Dict.read_file "test/part1/dict5" in
   assert_equal (Dict.analyze_entering d5) (Some 1); 
   let d6 = Dict.read_file "test/part1/dict6" in

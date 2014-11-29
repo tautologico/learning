@@ -18,5 +18,9 @@ val get : t -> int -> int -> float
 val set : t -> int -> int -> float -> unit
 
 (** Reads a matrix from an input channel. *)
-val read : in_channel -> rows:int -> cols: int -> t 
+val read : in_channel -> rows:int -> cols:int -> t 
 
+(** Copy a matrix *)
+val copy : t -> t 
+
+val transform_column : t -> col:int -> f:(float -> float) -> unit

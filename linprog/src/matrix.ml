@@ -20,4 +20,10 @@ let set m row col v = m.mxs.(row * m.cols + col) <- v
 let read ch ~rows ~cols = 
   init ~rows ~cols ~f:(fun _ _ -> Util.read_float ch)
 
+let copy m = 
+  { rows = m.rows; cols = m.cols; mxs = Array.copy m.mxs }
 
+let transform_column m ~col ~f = 
+  for r = 0 to (m.rows-1) do 
+    set m r col (f @@ get m r col)
+  done

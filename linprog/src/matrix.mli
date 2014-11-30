@@ -23,4 +23,6 @@ val read : in_channel -> rows:int -> cols:int -> t
 (** Copy a matrix *)
 val copy : t -> t 
 
+val transform_row : t -> row:int -> f:(float -> float) -> unit 
+
 val transform_column : t -> col:int -> f:(float -> float) -> unit

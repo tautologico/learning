@@ -63,7 +63,9 @@ let find_min_pos_index dict v =
 
 let analyze_leaving d enter = 
   Array.to_list d.assign 
-  |> List.mapi (fun i x -> -. x /. (Matrix.get d.a i enter))
+  |> List.mapi (fun i x -> 
+                let coeff = Matrix.get d.a i enter in 
+                if coeff < 0.0 then -. x /. coeff else -. 3.14)
   |> find_min_pos_index d
 
 let read_pivot_step ic = 

@@ -79,17 +79,41 @@ let test_pivot_part1 i ctxt =
   let calc_ps = Dict.calc_pivot_step dict in
   assert_equal ~cmp:(Util.lift_eq_option Dict.eq_pivot_step) exp_ps calc_ps
 
-let pivot_part1_suite = 
+let part1_pivot_suite = 
   let test_name i = Printf.sprintf "dict%d" i in
   let suite_list = 
     List.map 
       (fun i -> (test_name i) >:: (test_pivot_part1 i)) 
       (Util.range_lst 1 10)
   in
-  "pivot test, part 1" >::: suite_list
+  "part 1 : pivot tests" >::: suite_list
+
+let test_solve_part2 i ctxt = 
+  let dict_file = Printf.sprintf "test/part2/dict%d" i in 
+  let sol_file = Printf.sprintf "test/part2/dict%d.output" i in
+  let open Dict in 
+  let dict = read_file dict_file in
+  let sol_opt = read_solution_file sol_file in 
+  match solve_lp dict false with
+    Unbounded -> assert_equal sol_opt None
+  | SolutionFound (n, final_dict) -> 
+     let cmp = Util.lift_eq_option Dict.eq_solution in 
+     assert_equal ~cmp sol_opt (Some { steps = n; final_val = final_dict.obj.(0) })
+
+let part2_solve_suite = 
+  let test_name i = Printf.sprintf "dict%d" i in
+  let suite_list = 
+    List.map 
+      (fun i -> (test_name i) >:: (test_solve_part2 i)) 
+      (Util.range_lst 1 10)
+  in
+  "part 2 : solve tests" >::: suite_list
 
 let () = 
   Printf.printf "# Unit tests:\n";
   run_test_tt_main suite;
-  Printf.printf "\n# pivoting tests, part 1:\n";
-  run_test_tt_main pivot_part1_suite
+  Printf.printf "\n# Part 1 : pivoting tests:\n";
+  run_test_tt_main part1_pivot_suite;
+  Printf.printf "\n# Part 2 : solve tests:\n";
+  run_test_tt_main part2_solve_suite
+

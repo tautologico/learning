@@ -59,3 +59,5 @@ val read_solution : in_channel -> solution option
 val read_solution_file : string -> solution option 
 
 val eq_solution : solution -> solution -> bool 
+
+val solve_lp : t -> bool -> solve_result

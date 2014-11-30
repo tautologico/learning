@@ -21,7 +21,7 @@ type pivot_step_ix = {
   objvalue: float
 }
 
-type pivot_result = FinalDict | UnboundedDict | NormalStep of pivot_step
+type pivot_result = FinalDict | UnboundedDict | NormalStep of pivot_step_ix
 
 type solve_result = Unbounded | SolutionFound of int * t
 
@@ -93,12 +93,13 @@ let calc_pivot_step dict =
 
 let calc_pivot_step_ix dict = 
   match analyze_entering dict with
-  | None -> None
+  | None -> FinalDict
   | Some enter -> 
-     analyze_leaving dict enter 
-     |> Util.lift_option (fun (v, c) -> 
-                          { enter_ix = enter; leave_ix = v;
-                            objvalue = c *. dict.obj.(enter+1) +. dict.obj.(0) })
+     match analyze_leaving dict enter with
+     | None -> UnboundedDict 
+     | Some (v, c) -> 
+        NormalStep { enter_ix = enter; leave_ix = v;
+                     objvalue = c *. dict.obj.(enter+1) +. dict.obj.(0) }
 
 let eq_pivot_step ps1 ps2 = 
   ps1.entering = ps2.entering 
@@ -187,3 +188,21 @@ let pivot dict psi =
     assign = n_assign; a = n_a; obj = n_obj }
 
 
+let solve_lp start_dict dbgout = 
+  let print_debug_dict dict steps = 
+    Printf.printf "*** Solving, Step %d\n" steps;
+    print_dict dict
+  in
+  let rec solve_aux dict steps = 
+    if dbgout then print_debug_dict dict steps else (); 
+    match calc_pivot_step_ix dict with
+      UnboundedDict -> Unbounded
+    | FinalDict -> SolutionFound (steps, dict) 
+    | NormalStep ps -> 
+       if dbgout then 
+         Printf.printf "*** entering: %d, leaving: %d\n" dict.nbasic.(ps.enter_ix) 
+                       dict.basic.(ps.leave_ix)
+       else ();
+       solve_aux (pivot dict ps) (steps+1) 
+  in
+  solve_aux start_dict 0 

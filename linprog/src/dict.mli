@@ -14,7 +14,13 @@ type pivot_step = {
   objval : float
 }
 
-type pivot_result = FinalDict | UnboundedDict | NormalStep of pivot_step
+type pivot_step_ix = { 
+  enter_ix : int;
+  leave_ix : int;
+  objvalue: float
+}
+
+type pivot_result = FinalDict | UnboundedDict | NormalStep of pivot_step_ix
 
 type solve_result = Unbounded | SolutionFound of int * t
 

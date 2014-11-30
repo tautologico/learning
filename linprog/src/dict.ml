@@ -148,7 +148,7 @@ let pivot dict psi =
   let n_a = Matrix.copy dict.a in
   let l_factor = -. (Matrix.get n_a psi.leave_ix psi.enter_ix) in
   Matrix.set n_a psi.leave_ix psi.enter_ix (-. 1.0);
-  Matrix.transform_column n_a psi.leave_ix (fun x -> x /. l_factor);
+  Matrix.transform_row n_a psi.leave_ix (fun x -> x /. l_factor);
   let n_assign = Array.copy dict.assign in
   n_assign.(psi.leave_ix) <- n_assign.(psi.leave_ix) /. l_factor; 
 

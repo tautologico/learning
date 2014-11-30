@@ -141,8 +141,8 @@ let print_dict dict =
 let pivot dict psi = 
   let n_basic = Array.copy dict.basic in
   let n_nbasic = Array.copy dict.nbasic in
-  n_basic.(psi.leave_ix) <- n_nbasic.(psi.enter_ix);
-  n_nbasic.(psi.enter_ix) <- n_basic.(psi.leave_ix);
+  n_basic.(psi.leave_ix) <- dict.nbasic.(psi.enter_ix);
+  n_nbasic.(psi.enter_ix) <- dict.basic.(psi.leave_ix);
 
   (* invert equation for leaving variable *)
   let n_a = Matrix.copy dict.a in
@@ -153,13 +153,13 @@ let pivot dict psi =
   n_assign.(psi.leave_ix) <- n_assign.(psi.leave_ix) /. l_factor; 
 
   (* adjust other equations *)
+  let x3 = Matrix.get n_a psi.leave_ix psi.enter_ix in
   for r = 0 to (psi.leave_ix-1) do  (* TODO: rewrite to avoid repetition *)
     let x1 = Matrix.get n_a r psi.enter_ix in
     for c = 0 to (dict.n-1) do
       let x2 = Matrix.get n_a psi.leave_ix c in
       Matrix.set n_a r c ((Matrix.get dict.a r c) +. x1 *. x2)
     done;
-    let x3 = Matrix.get n_a psi.leave_ix psi.enter_ix in
     Matrix.set n_a r psi.enter_ix (x1 *. x3);
     n_assign.(r) <- n_assign.(r) +. x1 *. n_assign.(psi.leave_ix)
   done;
@@ -170,7 +170,6 @@ let pivot dict psi =
       let x2 = Matrix.get n_a psi.leave_ix c in
       Matrix.set n_a r c ((Matrix.get dict.a r c) +. x1 *. x2)
     done;
-    let x3 = Matrix.get n_a psi.leave_ix psi.enter_ix in
     Matrix.set n_a r psi.enter_ix (x1 *. x3);
     n_assign.(r) <- n_assign.(r) +. x1 *. n_assign.(psi.leave_ix)
   done;

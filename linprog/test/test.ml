@@ -61,7 +61,7 @@ let test_read_solution ctxt =
   assert_equal sol6 None
 
 let suite = 
-  "Unit tests" >:::
+  "unit_tests" >:::
     [ 
       "foldl1" >:: test_foldl1;
       "dictionary reading" >:: test_read_dict;
@@ -86,7 +86,7 @@ let part1_pivot_suite =
       (fun i -> (test_name i) >:: (test_pivot_part1 i)) 
       (Util.range_lst 1 10)
   in
-  "part 1 : pivot tests" >::: suite_list
+  "part1_pivot_tests" >::: suite_list
 
 let test_solve_part2 i ctxt = 
   let dict_file = Printf.sprintf "test/part2/dict%d" i in 
@@ -107,7 +107,7 @@ let part2_solve_suite =
       (fun i -> (test_name i) >:: (test_solve_part2 i)) 
       (Util.range_lst 1 10)
   in
-  "part 2 : solve tests" >::: suite_list
+  "part2_solve_tests" >::: suite_list
 
 let () = 
   Printf.printf "# Unit tests:\n";
